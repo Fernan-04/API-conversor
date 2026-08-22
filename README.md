@@ -131,7 +131,7 @@ secreto fuerte.
 | Variable | Efecto |
 |---|---|
 | `PORT` | Puerto en el que escucha uvicorn. Lo inyecta la plataforma (Render); por defecto 8000. |
-| `ALLOWED_ORIGINS` | Orígenes permitidos por CORS, separados por comas. Sin definir o `*` = cualquier origen (dev, avisa al arrancar). En producción, ponla a la URL de tu frontend (ej. `https://conversor-documentos-one.vercel.app`). |
+| `ALLOWED_ORIGINS` | Orígenes permitidos por CORS, separados por comas. Sin definir o `*` = cualquier origen (dev, avisa al arrancar). En producción, ponla a la URL de tu frontend (ej. `https://nombre-programa.vercel.app`). |
 | `API_KEY` | Si se define, `/convert` exige `X-API-Key` con ese valor. Sin definir = auth deshabilitada. |
 | `RATE_LIMIT_ENABLED` / `RATE_LIMIT_PER_IP` / `RATE_LIMIT_GLOBAL` / `RATE_LIMIT_WINDOW` | Rate limiting en memoria de `/convert`. Defaults: on / 30 por IP / 90 global / 60 s. Protege el cómputo del plan gratis aunque se filtre la API key. `RATE_LIMIT_ENABLED=0` lo desactiva. |
 
