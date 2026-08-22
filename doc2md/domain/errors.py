@@ -105,6 +105,17 @@ class UnauthorizedError(InfrastructureError):
         super().__init__(user_message, detail=detail)
 
 
+class RateLimitedError(InfrastructureError):
+    """Se superó el límite de peticiones (rate limiting)."""
+
+    code = "INFRA_RATE_LIMITED"
+    http_status = 429
+
+    def __init__(self, user_message: str = "Demasiadas peticiones. Espera unos segundos e inténtalo de nuevo.",
+                 *, detail: str | None = None) -> None:
+        super().__init__(user_message, detail=detail)
+
+
 # --------------------------------------------------------------------------- #
 # Dominio: falló la generación del Markdown (bug interno a corregir).
 # --------------------------------------------------------------------------- #

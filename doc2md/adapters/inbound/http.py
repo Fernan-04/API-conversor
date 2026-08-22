@@ -24,15 +24,17 @@ import zipfile
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, Header, UploadFile
+from fastapi import FastAPI, File, Header, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from doc2md import __version__, api
+from doc2md.adapters.inbound import rate_limit
 from doc2md.config import Config
 from doc2md.domain.errors import (
     ConversionError,
     FileTooLargeError,
+    RateLimitedError,
     TooManyFilesError,
     UnauthorizedError,
 )
@@ -120,11 +122,41 @@ def _content_disposition(raw_filename: str, ext: str) -> str:
     )
 
 
-def _error_response(exc: ConversionError) -> JSONResponse:
+def _error_response(exc: ConversionError, *, retry_after: float | None = None) -> JSONResponse:
+    headers = None
+    if retry_after is not None:
+        # Retry-After en segundos (entero, redondeado hacia arriba).
+        headers = {"Retry-After": str(max(1, int(retry_after + 0.999)))}
     return JSONResponse(
         status_code=exc.http_status,
         content={"code": exc.code, "message": exc.user_message, "layer": exc.layer},
+        headers=headers,
     )
+
+
+def _client_ip(request: Request) -> str:
+    """IP real del cliente. Tras el proxy de Render, viene en `X-Forwarded-For`
+    (lista separada por comas; la primera es el cliente original)."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _origin_allowed(request: Request) -> bool:
+    """Chequeo defensivo de `Origin` cuando CORS está restringido.
+
+    Complementa (no reemplaza) a CORS: bloquea clientes NO-navegador que no fijan
+    un `Origin` válido. Caveat: un `curl` puede falsificar `Origin`, así que no es
+    infalible — solo sube el listón frente a scripts ingenuos. Si `ALLOWED_ORIGINS`
+    no está restringido (`*`), no se aplica.
+    """
+    if _ORIGINS == ["*"]:
+        return True
+    origin = request.headers.get("origin")
+    if origin is None:
+        return True  # peticiones no-navegador legítimas (curl del propio dueño)
+    return origin in _ORIGINS
 
 
 def _convert_upload(data: bytes, filename: str, config: Config) -> str:
@@ -165,6 +197,7 @@ def health() -> dict[str, str]:
 
 @app.post("/convert")
 async def convert_endpoint(
+    request: Request,
     files: list[UploadFile] = File(...),
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
@@ -173,6 +206,21 @@ async def convert_endpoint(
     - 1 archivo  -> respuesta `text/markdown` (`<nombre>.md`).
     - varios     -> respuesta `application/zip` con un `.md` por archivo.
     """
+    # 1) Rate limit primero (lo más barato; protege el cómputo aunque falte clave).
+    retry = rate_limit.check(_client_ip(request))
+    if retry is not None:
+        return _error_response(RateLimitedError(), retry_after=retry)
+
+    # 2) Origen (capa defensiva ligera cuando CORS está restringido).
+    if not _origin_allowed(request):
+        return JSONResponse(
+            status_code=403,
+            content={"code": "INFRA_FORBIDDEN",
+                     "message": "Origen no permitido.",
+                     "layer": "infrastructure"},
+        )
+
+    # 3) API key.
     auth_error = _check_api_key(x_api_key)
     if auth_error is not None:
         return auth_error

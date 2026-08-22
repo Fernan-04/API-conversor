@@ -24,7 +24,8 @@ UTP+class) y se escaló a un motor con arquitectura hexagonal + una API HTTP.
   un archivo falla, y una **API HTTP** (FastAPI) para el frontend web.
 - **Endurecimiento de seguridad** (ver `docs/MEMORY.md`): guarda anti zip-bomb en
   OOXML, validación de firma por magic bytes, límites por petición (nº de archivos,
-  total, páginas PDF), API key opcional y saneo de `Content-Disposition`.
+  total, páginas PDF), API key opcional, **rate limiting** (por IP + global, en
+  memoria) y saneo de `Content-Disposition`.
 
 ## Arquitectura (hexagonal)
 
@@ -132,6 +133,7 @@ secreto fuerte.
 | `PORT` | Puerto en el que escucha uvicorn. Lo inyecta la plataforma (Render); por defecto 8000. |
 | `ALLOWED_ORIGINS` | Orígenes permitidos por CORS, separados por comas. Sin definir o `*` = cualquier origen (dev, avisa al arrancar). En producción, ponla a la URL de tu frontend (ej. `https://conversor-documentos-one.vercel.app`). |
 | `API_KEY` | Si se define, `/convert` exige `X-API-Key` con ese valor. Sin definir = auth deshabilitada. |
+| `RATE_LIMIT_ENABLED` / `RATE_LIMIT_PER_IP` / `RATE_LIMIT_GLOBAL` / `RATE_LIMIT_WINDOW` | Rate limiting en memoria de `/convert`. Defaults: on / 30 por IP / 90 global / 60 s. Protege el cómputo del plan gratis aunque se filtre la API key. `RATE_LIMIT_ENABLED=0` lo desactiva. |
 
 ### Docker
 
