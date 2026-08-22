@@ -18,8 +18,13 @@ UTP+class) y se escaló a un motor con arquitectura hexagonal + una API HTTP.
   del orador como bloque aparte.
 - **XLSX**: una sección por hoja (encabezado con el nombre) + tabla de sus filas
   (con tope configurable para hojas enormes).
+- **TXT/MD/CSV/TSV** (solo stdlib): `.txt` → párrafos; `.md` → passthrough
+  verbatim; `.csv`/`.tsv` → tabla.
 - CLI por lotes (una carpeta completa, opcionalmente recursiva) que no aborta si
   un archivo falla, y una **API HTTP** (FastAPI) para el frontend web.
+- **Endurecimiento de seguridad** (ver `docs/MEMORY.md`): guarda anti zip-bomb en
+  OOXML, validación de firma por magic bytes, límites por petición (nº de archivos,
+  total, páginas PDF), API key opcional y saneo de `Content-Disposition`.
 
 ## Arquitectura (hexagonal)
 
@@ -96,17 +101,37 @@ curl -F "files=@informe.docx" http://localhost:8000/convert -o informe.md
 curl -F "files=@a.pdf" -F "files=@b.xlsx" http://localhost:8000/convert -o out.zip
 ```
 
-Errores tipificados (§8.2): problemas del archivo del usuario → HTTP 4xx
+Errores tipificados (§8.2): problemas del archivo/petición → HTTP 4xx
 (`INFRA_UNSUPPORTED_FORMAT`, `INFRA_CORRUPT_FILE`, `INFRA_PASSWORD_PROTECTED`,
-`INFRA_FILE_TOO_LARGE`); bug interno → 500 (`DOMAIN_*`). El cuerpo trae
-`{code, message, layer}`.
+`INFRA_FILE_TOO_LARGE`, `INFRA_TOO_MANY_FILES`, `INFRA_UNAUTHORIZED`); bug interno
+→ 500 (`DOMAIN_*`). El cuerpo trae `{code, message, layer}`.
+
+### API key (opcional)
+
+Si defines la env `API_KEY`, `POST /convert` exige la cabecera `X-API-Key` con ese
+valor (`GET /health` sigue abierto). **Segura por defecto**: sin `API_KEY`, la auth
+queda deshabilitada y todo funciona como siempre. Genera una clave con:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+```bash
+# Con auth activa:
+curl -F "files=@informe.docx" -H "X-API-Key: TU_CLAVE" http://localhost:8000/convert -o informe.md
+```
+
+La web (Vercel) debe enviar la misma clave vía `NEXT_PUBLIC_API_KEY`. Caveat: esa
+env es visible en el bundle del navegador — frena bots y la URL "pelada", no es un
+secreto fuerte.
 
 ### Variables de entorno
 
 | Variable | Efecto |
 |---|---|
 | `PORT` | Puerto en el que escucha uvicorn. Lo inyecta la plataforma (Render); por defecto 8000. |
-| `ALLOWED_ORIGINS` | Orígenes permitidos por CORS, separados por comas. Sin definir o `*` = cualquier origen (dev). En producción, ponla a la URL de tu frontend (ej. `https://conversor-documentos-one.vercel.app`) para que solo esa web pueda usar la API. |
+| `ALLOWED_ORIGINS` | Orígenes permitidos por CORS, separados por comas. Sin definir o `*` = cualquier origen (dev, avisa al arrancar). En producción, ponla a la URL de tu frontend (ej. `https://conversor-documentos-one.vercel.app`). |
+| `API_KEY` | Si se define, `/convert` exige `X-API-Key` con ese valor. Sin definir = auth deshabilitada. |
 
 ### Docker
 

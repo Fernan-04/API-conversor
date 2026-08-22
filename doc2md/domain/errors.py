@@ -83,6 +83,28 @@ class FileTooLargeError(InfrastructureError):
         super().__init__(user_message, detail=detail)
 
 
+class TooManyFilesError(InfrastructureError):
+    """Se enviaron más archivos de los permitidos en una sola petición."""
+
+    code = "INFRA_TOO_MANY_FILES"
+    http_status = 413
+
+    def __init__(self, user_message: str = "Se enviaron demasiados archivos en una sola petición.",
+                 *, detail: str | None = None) -> None:
+        super().__init__(user_message, detail=detail)
+
+
+class UnauthorizedError(InfrastructureError):
+    """Falta la API key o no coincide (solo si `API_KEY` está configurada)."""
+
+    code = "INFRA_UNAUTHORIZED"
+    http_status = 401
+
+    def __init__(self, user_message: str = "Falta la API key o es inválida.",
+                 *, detail: str | None = None) -> None:
+        super().__init__(user_message, detail=detail)
+
+
 # --------------------------------------------------------------------------- #
 # Dominio: falló la generación del Markdown (bug interno a corregir).
 # --------------------------------------------------------------------------- #

@@ -40,7 +40,18 @@ class Table:
     rows: list[list[str]]
 
 
-Element = Union[Heading, Paragraph, ListBlock, Table]
+@dataclass
+class Raw:
+    """Markdown ya formado que se emite VERBATIM (sin escapar).
+
+    Para orígenes que ya son Markdown (`.md`): escapar `*`/`_`/`` ` `` los
+    corromperría. El resto de elementos llevan texto sin escapar y el renderer
+    los escapa; `Raw` es la excepción explícita y controlada.
+    """
+    text: str
+
+
+Element = Union[Heading, Paragraph, ListBlock, Table, Raw]
 
 
 @dataclass

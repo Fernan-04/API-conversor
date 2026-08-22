@@ -30,6 +30,7 @@ from doc2md.adapters.outbound.pdf.tables import (
     select_tables,
 )
 from doc2md.config import Config
+from doc2md.domain.errors import FileTooLargeError
 from doc2md.text_utils import normalize_unicode, strip_pua
 
 
@@ -136,6 +137,12 @@ def extract_document(
 
     with pdfplumber.open(source) as pdf:
         n_pages = len(pdf.pages)
+        if n_pages > config.pdf_max_pages:
+            raise FileTooLargeError(
+                f"El PDF tiene {n_pages} páginas; el máximo permitido es "
+                f"{config.pdf_max_pages}.",
+                detail=f"pages={n_pages} > {config.pdf_max_pages}",
+            )
         for page in pdf.pages:
             accepted = []
             if config.extract_tables:

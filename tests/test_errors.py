@@ -16,7 +16,7 @@ from doc2md.domain.errors import (
 
 def test_unsupported_format():
     with pytest.raises(UnsupportedFormatError) as exc:
-        convert(b"cualquier cosa", Config(), filename="archivo.txt")
+        convert(b"cualquier cosa", Config(), filename="archivo.xyz")
     assert exc.value.code == "INFRA_UNSUPPORTED_FORMAT"
     assert exc.value.layer == "infrastructure"
     assert exc.value.http_status == 400
@@ -42,4 +42,6 @@ def test_bytes_without_filename():
 
 def test_router_lists_supported():
     exts = router.supported_extensions()
-    assert set(exts) == {".pdf", ".docx", ".pptx", ".xlsx"}
+    assert set(exts) == {
+        ".pdf", ".docx", ".pptx", ".xlsx", ".txt", ".md", ".csv", ".tsv",
+    }

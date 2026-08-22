@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from doc2md.adapters.outbound.csv_reader import CsvReader
 from doc2md.adapters.outbound.docx_reader import DocxReader
 from doc2md.adapters.outbound.pdf.reader import PdfReader
 from doc2md.adapters.outbound.pptx_reader import PptxReader
+from doc2md.adapters.outbound.text_reader import TextReader
 from doc2md.adapters.outbound.xlsx_reader import XlsxReader
 from doc2md.domain.errors import UnsupportedFormatError
 from doc2md.domain.ports import DocumentReader
@@ -22,6 +24,10 @@ _READERS: dict[str, DocumentReader] = {
     ".docx": DocxReader(),
     ".pptx": PptxReader(),
     ".xlsx": XlsxReader(),
+    ".txt": TextReader(),
+    ".md": TextReader(),
+    ".csv": CsvReader(),
+    ".tsv": CsvReader(),
 }
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 
+from doc2md.adapters.outbound._zip_guard import ensure_safe_zip
 from doc2md.config import Config
 from doc2md.domain.errors import CorruptFileError
 from doc2md.domain.models import Document, Element, Heading, Paragraph, Table
@@ -42,6 +43,7 @@ class XlsxReader:
     """Adaptador de lectura XLSX (puerto `DocumentReader`)."""
 
     def read(self, data: bytes, filename: str, config: Config) -> Document:
+        ensure_safe_zip(data, config)   # guarda anti zip-bomb (XLSX es zip+XML)
         try:
             from openpyxl import load_workbook
 

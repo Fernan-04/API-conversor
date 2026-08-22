@@ -38,16 +38,43 @@ class Config:
     # Formatos y límites (Fase 1/2)
     # ------------------------------------------------------------------ #
     # Extensiones soportadas por el router. El orden no importa.
-    supported_extensions: tuple[str, ...] = (".pdf", ".docx", ".pptx", ".xlsx")
+    supported_extensions: tuple[str, ...] = (
+        ".pdf", ".docx", ".pptx", ".xlsx",
+        ".txt", ".md", ".csv", ".tsv",
+    )
     # Límite de tamaño de archivo para la API (evita saturar la memoria del plan
     # gratuito de Railway/Render). 25 MB por decisión de proyecto.
     max_file_size_bytes: int = 25 * 1024 * 1024
     # Tope de filas por hoja de cálculo (hojas enormes -> tabla Markdown gigante).
+    # Lo reutiliza también el lector CSV/TSV.
     xlsx_max_rows: int = 1000
     # Tope de columnas por hoja. Las hojas usadas como maquetación visual (p. ej.
     # un diagrama de Gantt) tienen cientos de columnas de línea de tiempo que no
-    # son datos tabulares; se recortan a este ancho con un aviso.
+    # son datos tabulares; se recortan a este ancho con un aviso. Lo reutiliza el
+    # lector CSV/TSV.
     xlsx_max_cols: int = 50
+
+    # ------------------------------------------------------------------ #
+    # Límites de recursos por petición (endurecimiento de seguridad)
+    # ------------------------------------------------------------------ #
+    # Nº máximo de archivos por petición a la API. Sin este tope, un cliente
+    # podría enviar miles de archivos y hacer que el .zip se arme entero en
+    # memoria (crítico en el plan gratis de Render, ~512 MB RAM).
+    max_files: int = 20
+    # Tamaño total acumulado (suma de todos los archivos de la petición).
+    max_total_bytes: int = 60 * 1024 * 1024
+    # Nº máximo de páginas de un PDF. Un PDF hostil con muchísimas páginas puede
+    # saturar CPU/RAM; se rechaza antes de procesarlo entero.
+    pdf_max_pages: int = 300
+
+    # ------------------------------------------------------------------ #
+    # Guarda anti "zip-bomb" para formatos OOXML (DOCX/PPTX/XLSX son zip+XML).
+    # Se inspecciona el índice del zip (sin extraer) y se rechaza si excede
+    # estos umbrales. Referencia: markitdown NO tiene ninguna de estas guardas.
+    # ------------------------------------------------------------------ #
+    zip_max_entries: int = 2000          # nº de ficheros dentro del zip
+    zip_max_uncompressed_bytes: int = 400 * 1024 * 1024   # 400 MB descomprimidos
+    zip_max_ratio: float = 120.0         # descomprimido / comprimido
 
     # ------------------------------------------------------------------ #
     # Títulos (§6.4)

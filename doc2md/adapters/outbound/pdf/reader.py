@@ -22,8 +22,13 @@ from doc2md.adapters.outbound.pdf.extract import (
     assign_headings,
     extract_document,
 )
+from doc2md.adapters.outbound._signatures import ensure_signature
 from doc2md.config import Config
-from doc2md.domain.errors import CorruptFileError, PasswordProtectedError
+from doc2md.domain.errors import (
+    ConversionError,
+    CorruptFileError,
+    PasswordProtectedError,
+)
 from doc2md.domain.models import Document, Element, Heading, ListBlock, Paragraph, Table
 
 
@@ -123,10 +128,15 @@ class PdfReader:
     """Adaptador de lectura PDF (puerto `DocumentReader`)."""
 
     def read(self, data: bytes, filename: str, config: Config) -> Document:
+        ensure_signature(data, ".pdf")   # el contenido debe empezar por %PDF
         try:
             pages, n_pages, pages_with_text, log = extract_document(
                 io.BytesIO(data), config
             )
+        except ConversionError:
+            # Errores ya tipificados (p. ej. límite de páginas): se propagan tal
+            # cual, sin re-envolverlos en un CorruptFileError genérico.
+            raise
         except Exception as exc:  # noqa: BLE001 — se traduce a error tipificado
             if _looks_password_protected(exc):
                 raise PasswordProtectedError(detail=str(exc)) from exc

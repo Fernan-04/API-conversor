@@ -23,11 +23,11 @@ motor PDF, en `docs/SPEC_pdf2md.md`.
 | Fase | Descripción | Estado |
 |---|---|---|
 | 1 | Motor multi-formato + arquitectura hexagonal + errores tipificados + logging JSON | ✅ Hecho |
-| 2 | API FastAPI (`POST /convert`, cero persistencia) + Dockerfile | ✅ Hecho |
-| 3 | Deploy de la API (Railway o Render) | ⬜ Pendiente (requiere tus cuentas) |
-| 4 | Frontend Next.js + TypeScript | ⬜ Pendiente |
-| 5 | Deploy del frontend (Vercel) | ⬜ Pendiente (requiere tus cuentas) |
-| 6 | Pulido (aviso de privacidad, timeouts, vista previa) | ⬜ Parcial (la API ya hace .zip múltiple) |
+        | 2 | API FastAPI (`POST /convert`, cero persistencia) + Dockerfile | ✅ Hecho |
+| 3 | Deploy de la API (Railway o Render) | ✅ Hecho |
+| 4 | Frontend Next.js + TypeScript | ✅ Hecho |
+| 5 | Deploy del frontend (Vercel) | ✅ Hecho |
+| 6 | Pulido (aviso de privacidad, timeouts, vista previa) | ✅ Hecho|
 
 ## Cómo correr todo
 

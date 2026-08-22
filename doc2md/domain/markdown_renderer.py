@@ -20,6 +20,7 @@ from doc2md.domain.models import (
     Heading,
     ListBlock,
     Paragraph,
+    Raw,
     Table,
 )
 
@@ -70,6 +71,9 @@ def _render_element(el: Element, config: Config) -> str:
         return "\n".join("- " + _escape(item) for item in el.items if item)
     if isinstance(el, Table):
         return _render_table(el.rows)
+    if isinstance(el, Raw):
+        # Verbatim: el origen ya es Markdown. Solo se normaliza el fin de línea.
+        return el.text.strip("\n")
     return ""
 
 

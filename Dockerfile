@@ -13,6 +13,12 @@ COPY pyproject.toml README.md ./
 COPY doc2md ./doc2md
 RUN pip install --no-cache-dir ".[api]"
 
+# Ejecutar como usuario sin privilegios (no root) — reduce el impacto si el
+# proceso se ve comprometido al parsear un archivo malicioso.
+RUN adduser --disabled-password --gecos "" --uid 10001 appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 # Railway/Render inyectan el puerto en $PORT; por defecto 8000 en local.
 ENV PORT=8000
 EXPOSE 8000

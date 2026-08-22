@@ -50,7 +50,7 @@ def test_convert_multiple_returns_zip(docx_bytes):
 
 
 def test_convert_unsupported_format():
-    r = client.post("/convert", files={"files": ("nota.txt", b"hola", "text/plain")})
+    r = client.post("/convert", files={"files": ("archivo.xyz", b"hola", "application/octet-stream")})
     assert r.status_code == 400
     assert r.json()["code"] == "INFRA_UNSUPPORTED_FORMAT"
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import re
 
+from doc2md.adapters.outbound._zip_guard import ensure_safe_zip
 from doc2md.config import Config
 from doc2md.domain.errors import CorruptFileError
 from doc2md.domain.models import Document, Element, Heading, ListBlock, Paragraph, Table
@@ -75,6 +76,7 @@ class DocxReader:
     """Adaptador de lectura DOCX (puerto `DocumentReader`)."""
 
     def read(self, data: bytes, filename: str, config: Config) -> Document:
+        ensure_safe_zip(data, config)   # guarda anti zip-bomb (DOCX es zip+XML)
         try:
             from docx import Document as DocxDocument
             from docx.table import Table as DocxTable
