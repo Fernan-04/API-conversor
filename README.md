@@ -101,6 +101,13 @@ Errores tipificados (§8.2): problemas del archivo del usuario → HTTP 4xx
 `INFRA_FILE_TOO_LARGE`); bug interno → 500 (`DOMAIN_*`). El cuerpo trae
 `{code, message, layer}`.
 
+### Variables de entorno
+
+| Variable | Efecto |
+|---|---|
+| `PORT` | Puerto en el que escucha uvicorn. Lo inyecta la plataforma (Render); por defecto 8000. |
+| `ALLOWED_ORIGINS` | Orígenes permitidos por CORS, separados por comas. Sin definir o `*` = cualquier origen (dev). En producción, ponla a la URL de tu frontend (ej. `https://conversor-documentos-one.vercel.app`) para que solo esa web pueda usar la API. |
+
 ### Docker
 
 ```bash

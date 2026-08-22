@@ -15,6 +15,7 @@ Contrato de cero persistencia (§2.1, §8.3):
 from __future__ import annotations
 
 import io
+import os
 import time
 import zipfile
 from pathlib import Path
@@ -34,13 +35,29 @@ app = FastAPI(
     description="Convierte PDF/DOCX/PPTX/XLSX a Markdown. No almacena nada.",
 )
 
-# El frontend (Vercel) vive en otro origen; se permite CORS. Se puede restringir
-# por variable de entorno al desplegar.
+
+def _allowed_origins() -> list[str]:
+    """Orígenes permitidos por CORS.
+
+    Se leen de la variable de entorno `ALLOWED_ORIGINS` (lista separada por
+    comas). Si no está definida o vale "*", se permite cualquier origen — útil
+    para desarrollo. En producción, ponla a la URL de tu frontend en Vercel para
+    que solo esa web pueda usar la API. Ej.:
+        ALLOWED_ORIGINS=https://conversor-documentos-one.vercel.app
+    """
+    raw = os.getenv("ALLOWED_ORIGINS", "*").strip()
+    if not raw or raw == "*":
+        return ["*"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+# El frontend (Vercel) vive en otro origen; se permite CORS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins(),
     allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 
