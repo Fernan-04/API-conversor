@@ -1,0 +1,26 @@
+[project]
+name = "doc2md"
+version = "0.2.0"
+description = "Conversor local multi-formato (PDF/DOCX/PPTX/XLSX) a Markdown."
+requires-python = ">=3.10"
+dependencies = [
+    "pdfplumber>=0.11",
+    "python-docx>=1.1",
+    "python-pptx>=0.6.23",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "python-multipart>=0.0.9"]
+ocr = ["pytesseract", "pillow"]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+doc2md = "doc2md.adapters.inbound.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["doc2md*"]

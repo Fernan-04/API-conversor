@@ -1,0 +1,29 @@
+# Entorno virtual y cachés de Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Secretos / credenciales — NUNCA subir (repo público)
+.env
+.env.*
+*.key
+*.pem
+secrets.*
+credentials.*
+
+# Documentos personales de prueba: NO se sube la carpeta pdfs/ al repo público.
+# El fixture de los tests vive en tests/fixtures/, no aquí.
+/pdfs/
+
+# Salida generada por el CLI (regenerable, desechable).
+/markdown/
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
