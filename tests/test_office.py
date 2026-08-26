@@ -32,6 +32,25 @@ def test_docx_list(docx_bytes):
     assert "- Segundo ítem" in md
 
 
+def test_docx_inline_bold_italic(docx_bytes):
+    """Negrita y cursiva PARCIALES dentro de un párrafo (no todo el párrafo)."""
+    md = convert(docx_bytes, Config(), filename="doc.docx")
+    assert "Texto con **negrita** y *cursiva*." in md
+
+
+def test_docx_hyperlink(docx_bytes):
+    """Los hipervínculos se conservan como [texto](url) (antes se perdían)."""
+    md = convert(docx_bytes, Config(), filename="doc.docx")
+    assert "[nuestra web](https://example.com/x)" in md
+
+
+def test_docx_numbered_list(docx_bytes):
+    """Una lista con estilo 'List Number' se emite con marcador numerado."""
+    md = convert(docx_bytes, Config(), filename="doc.docx")
+    assert "1. Paso uno" in md
+    assert "1. Paso dos" in md
+
+
 def test_docx_table(docx_bytes):
     md = convert(docx_bytes, Config(), filename="doc.docx")
     assert "| A | B | C |" in md

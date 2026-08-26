@@ -22,16 +22,49 @@ class Heading:
 
 
 @dataclass
-class Paragraph:
-    """Un párrafo de texto ya unido. `strong` marca negrita de línea/etiqueta."""
+class Span:
+    """Un fragmento de texto inline con formato (§B, DOCX rico).
+
+    Permite negrita/cursiva parcial e hipervínculos DENTRO de un párrafo o ítem,
+    que el texto plano no puede representar. `link` = URL si el fragmento es un
+    enlace. El texto va RAW (sin escapar); el renderer escapa y envuelve.
+    """
     text: str
+    bold: bool = False
+    italic: bool = False
+    link: str | None = None
+
+
+@dataclass
+class Paragraph:
+    """Un párrafo de texto ya unido. `strong` marca negrita de línea/etiqueta.
+
+    Si `spans` no es None, el renderer usa los spans (texto con formato inline) en
+    vez de `text`; así un lector rico (DOCX) puede conservar negrita/cursiva/enlaces
+    parciales, mientras los lectores simples siguen usando solo `text`.
+    """
+    text: str = ""
     strong: bool = False
+    spans: "list[Span] | None" = None
+
+
+@dataclass
+class ListItem:
+    """Un ítem de lista rico: spans + nivel de anidación + si es numerado."""
+    spans: list[Span]
+    level: int = 0
+    ordered: bool = False
 
 
 @dataclass
 class ListBlock:
-    """Una lista de viñetas. Cada ítem es texto ya unido y des-hifenizado."""
+    """Una lista de viñetas. Cada ítem es texto ya unido y des-hifenizado.
+
+    `rich_items` (opcional) lleva ítems con formato inline, anidación y numeración;
+    si está presente tiene prioridad sobre `items`.
+    """
     items: list[str]
+    rich_items: "list[ListItem] | None" = None
 
 
 @dataclass

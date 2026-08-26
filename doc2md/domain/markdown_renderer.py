@@ -19,8 +19,10 @@ from doc2md.domain.models import (
     Element,
     Heading,
     ListBlock,
+    ListItem,
     Paragraph,
     Raw,
+    Span,
     Table,
 )
 
@@ -87,6 +89,46 @@ def _render_table(rows: list[list[str]]) -> str:
     return "\n".join(out)
 
 
+def _render_span(span: Span, config: Config) -> str:
+    """Renderiza un span inline: escapa el texto y aplica enlace/negrita/cursiva.
+
+    Los marcadores (`**`, `*`) se colocan alrededor del texto SIN los espacios de
+    los bordes (`**hola **` es inválido en Markdown), reponiéndolos por fuera.
+    """
+    if span.link:
+        label = _escape(span.text.strip()) or span.link
+        return f"[{label}]({span.link})"
+    text = span.text
+    lead = text[: len(text) - len(text.lstrip())]
+    trail = text[len(text.rstrip()):]
+    core = _escape(text.strip())
+    if core:
+        if span.bold and span.italic:
+            core = f"***{core}***"
+        elif span.bold:
+            core = f"**{core}**"
+        elif span.italic:
+            core = f"*{core}*"
+    return f"{lead}{core}{trail}"
+
+
+def _render_spans(spans: "list[Span]", config: Config) -> str:
+    return "".join(_render_span(s, config) for s in spans).strip()
+
+
+def _render_list_items(items: "list[ListItem]", config: Config) -> str:
+    """Renderiza ítems ricos con anidación (sangría de 2 espacios por nivel) y
+    marcador `1.` si son numerados, `-` si son viñetas."""
+    lines: list[str] = []
+    for it in items:
+        body = _render_spans(it.spans, config)
+        if not body:
+            continue
+        marker = "1." if it.ordered else "-"
+        lines.append("  " * max(it.level, 0) + f"{marker} " + body)
+    return "\n".join(lines)
+
+
 def _render_element(el: Element, config: Config) -> str:
     if isinstance(el, Heading):
         text = el.text.strip()
@@ -94,11 +136,15 @@ def _render_element(el: Element, config: Config) -> str:
             return ""
         return "#" * el.level + " " + _escape(text)
     if isinstance(el, Paragraph):
+        if el.spans is not None:
+            return _render_spans(el.spans, config)   # negrita/cursiva/enlaces ya en los spans
         text = _render_inline(el.text, config)
         if config.mark_bold and el.strong and text:
             text = f"**{text}**"
         return text
     if isinstance(el, ListBlock):
+        if el.rich_items is not None:
+            return _render_list_items(el.rich_items, config)
         return "\n".join("- " + _render_inline(item, config) for item in el.items if item)
     if isinstance(el, Table):
         return _render_table(el.rows)
