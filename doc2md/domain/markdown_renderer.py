@@ -36,6 +36,37 @@ def _escape(text: str) -> str:
     return text
 
 
+# URL suelta (http/https). Se corta en espacio o paréntesis de cierre.
+_URL_RE = re.compile(r"https?://[^\s)]+")
+
+
+def _url_label(url: str) -> str:
+    host = re.sub(r"^https?://", "", url).split("/", 1)[0]
+    return "Ver en biblioteca" if "biblioteca" in host.lower() else host
+
+
+def _render_inline(text: str, config: Config) -> str:
+    """Escapa el texto y, si procede, convierte URLs sueltas en enlaces Markdown.
+
+    El autolinking se hace ANTES de escapar cada tramo, porque `_escape` rompería
+    los `_` de la URL. La URL va sin escapar dentro de `[etiqueta](url)`.
+    """
+    if not config.autolink_urls or "http" not in text:
+        return _escape(text)
+    out: list[str] = []
+    last = 0
+    for m in _URL_RE.finditer(text):
+        raw = m.group(0)
+        url = raw.rstrip(".,;:)]")           # puntuación final que no es de la URL
+        trailing = raw[len(url):]
+        out.append(_escape(text[last:m.start()]))
+        out.append(f"[{_url_label(url)}]({url})")
+        out.append(_escape(trailing))
+        last = m.end()
+    out.append(_escape(text[last:]))
+    return "".join(out)
+
+
 def _escape_cell(text: str) -> str:
     # En celdas: sin saltos de línea y con `|` escapado (§6.8).
     return text.replace("\n", " ").replace("|", "\\|")
@@ -63,12 +94,12 @@ def _render_element(el: Element, config: Config) -> str:
             return ""
         return "#" * el.level + " " + _escape(text)
     if isinstance(el, Paragraph):
-        text = _escape(el.text)
+        text = _render_inline(el.text, config)
         if config.mark_bold and el.strong and text:
             text = f"**{text}**"
         return text
     if isinstance(el, ListBlock):
-        return "\n".join("- " + _escape(item) for item in el.items if item)
+        return "\n".join("- " + _render_inline(item, config) for item in el.items if item)
     if isinstance(el, Table):
         return _render_table(el.rows)
     if isinstance(el, Raw):

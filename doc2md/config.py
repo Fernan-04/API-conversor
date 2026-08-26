@@ -87,6 +87,38 @@ class Config:
     # Refuerzo: una línea corta (< N chars), en negrita y sin punto final puede
     # tratarse como título aunque el tamaño no suba.
     heading_short_line_max_len: int = 80
+    # Pulido de títulos (acercar la salida al "diseño IA"):
+    #  - titlecase_headings: un título EN MAYÚSCULAS ("FUNDAMENTACIÓN") se pasa a
+    #    Title Case español ("Fundamentación"). Solo afecta a títulos all-caps.
+    #  - heading_strip_trailing_colon: quita los dos puntos finales ("Logro a
+    #    evaluar:" -> "Logro a evaluar").
+    #  - heading_demote_title_block: el bloque de título del inicio del documento
+    #    (varias líneas grandes seguidas, todas nivel 1) se degrada a #/##/###.
+    titlecase_headings: bool = True
+    heading_strip_trailing_colon: bool = True
+    heading_demote_title_block: bool = True
+
+    # ------------------------------------------------------------------ #
+    # Bloque clave-valor -> tabla (§B). Un párrafo que en realidad son campos
+    # numerados "N.N Etiqueta: valor" (sección "Datos Generales") se convierte en
+    # una tabla de 2 columnas (Campo | Detalle). Se exige un mínimo de pares y que
+    # cubran casi todo el párrafo, para no disparar sobre prosa normal.
+    # ------------------------------------------------------------------ #
+    kv_to_table: bool = True
+    kv_min_pairs: int = 3
+    kv_min_coverage: float = 0.75
+    kv_label_max_len: int = 40
+
+    # URLs sueltas -> enlace Markdown [etiqueta](url) (§D). La etiqueta es el host;
+    # si el host menciona "biblioteca" se usa "Ver en biblioteca" (caso UTP).
+    autolink_urls: bool = True
+
+    # Temario corrido -> lista de viñetas (§B). SOLO se aplica al párrafo que sigue
+    # a un título cuyo texto está en `bullet_trigger_headings` (no a prosa normal,
+    # que también tiene límites de oración). Se parte por fin de oración (".+May")
+    # y por marcadores de guion; se exige >= 2 ítems para convertir.
+    temario_to_bullets: bool = True
+    bullet_trigger_headings: tuple[str, ...] = ("temario",)
 
     # ------------------------------------------------------------------ #
     # Negritas (§2)
@@ -151,6 +183,14 @@ class Config:
     #     vacías y el resto solo numérico -> se anexa a la fila anterior.
     merge_score_rows: bool = True
     score_row_empty_leading: int = 2
+    # Formatear los puntajes fusionados como "**(N)**" (como el diseño IA) en vez
+    # de un número suelto. Se aplica tanto a la fusión dentro de una tabla como a
+    # la fila-huérfana de puntajes que cae al inicio de la página siguiente.
+    score_bold_parens: bool = True
+    # Recuperar la fila-huérfana de puntajes (solo números + vacías) que pdfplumber
+    # deja al inicio de la página siguiente cuando parte una rúbrica: sus números
+    # se anexan a las celdas de nivel de la última fila de la tabla anterior.
+    merge_orphan_score_row: bool = True
     # (3) Descartar filas separadoras (solo guiones) que quedan dentro de una
     #     tabla por un corte de página.
     drop_separator_rows: bool = True
@@ -159,6 +199,12 @@ class Config:
     #     trata como continuación. Si su 1ª fila repite la cabecera, se elimina.
     merge_tables_across_pages: bool = True
     merge_drop_repeated_header: bool = True
+    # (5) Fusionar una continuación con MENOS columnas: cuando una tabla parte entre
+    # páginas, las filas siguientes pueden perder las columnas "spanning" de la
+    # izquierda (p. ej. la columna "Unidad" de un cronograma queda vacía y
+    # pdfplumber no la emite). Si la continuación tiene entre 1 y N columnas menos,
+    # se rellena por la izquierda con celdas vacías para alinear y unir.
+    merge_pad_narrower_max: int = 2
 
     # ------------------------------------------------------------------ #
     # Cabeceras / pies repetidos (§6.2)

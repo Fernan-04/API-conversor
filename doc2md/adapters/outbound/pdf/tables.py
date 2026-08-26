@@ -128,6 +128,26 @@ def _is_score_row(row: list[str], config: Config) -> bool:
     return bool(rest) and all(_NUM.match(c) for c in rest)
 
 
+def _fmt_score(value: str, config: Config) -> str:
+    """Formatea un puntaje suelto ("5" -> "**(5)**") si está activado."""
+    return f"**({value})**" if config.score_bold_parens else value
+
+
+def _append_scores(row: list[str], scores: list[str], config: Config) -> None:
+    """Anexa `scores` a las últimas celdas de `row`, en orden (in-place).
+
+    Cada puntaje va a una columna de nivel: los N puntajes se alinean con las N
+    últimas columnas de la fila (Estándar/En Proceso 2/En Proceso 1/Inicial).
+    """
+    if not scores or len(scores) > len(row):
+        return
+    start = len(row) - len(scores)
+    for i, s in enumerate(scores):
+        cell = row[start + i]
+        piece = _fmt_score(s, config)
+        row[start + i] = (cell + " " + piece).strip() if cell else piece
+
+
 def _is_separator_row(row: list[str]) -> bool:
     """(3) Fila compuesta solo de guiones (separador colado por corte de página)."""
     cells = [c for c in row if c]
@@ -150,7 +170,8 @@ def polish_rows(rows: list[list[str]], config: Config,
             prev = result[-1]
             for i, c in enumerate(row):
                 if c and i < len(prev):
-                    prev[i] = (prev[i] + " " + c).strip() if prev[i] else c
+                    piece = _fmt_score(c, config)
+                    prev[i] = (prev[i] + " " + piece).strip() if prev[i] else piece
             merged_scores += 1
             continue
         result.append(list(row))
@@ -168,6 +189,31 @@ def merge_tables_across_pages(pages: list[list], config: Config,
     running_header: list[str] | None = None
 
     for pi, blocks in enumerate(pages):
+        # Fila-huérfana de puntajes al inicio de la página siguiente: recupera los
+        # números y los anexa a la última fila de la tabla anterior (§C).
+        if (config.merge_orphan_score_row and running is not None
+                and running.rows and blocks and blocks[0].kind == "table"
+                and blocks[0].rows and _is_score_row(blocks[0].rows[0], config)):
+            scores = [c for c in blocks[0].rows[0] if c]
+            _append_scores(running.rows[-1], scores, config)
+            log(f"[tabla] p{pi + 1}: fila huérfana de puntajes recuperada "
+                f"({len(scores)} puntaje(s))")
+            blocks[0].rows.pop(0)
+            if not blocks[0].rows:
+                blocks.pop(0)
+
+        # Continuación con menos columnas: rellenar por la izquierda para alinear
+        # (columnas "spanning" perdidas al partir la tabla entre páginas).
+        if (running is not None and blocks and blocks[0].kind == "table"
+                and running.rows and blocks[0].rows):
+            rncol = len(running.rows[0])
+            cncol = len(blocks[0].rows[0])
+            if 0 < rncol - cncol <= config.merge_pad_narrower_max:
+                pad = rncol - cncol
+                blocks[0].rows = [[""] * pad + r for r in blocks[0].rows]
+                log(f"[tabla] p{pi + 1}: continuación con {pad} col(s) menos, "
+                    f"rellenada por la izquierda")
+
         if (running is not None and blocks and blocks[0].kind == "table"
                 and running.rows and blocks[0].rows
                 and len(running.rows[0]) == len(blocks[0].rows[0])):

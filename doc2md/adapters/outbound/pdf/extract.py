@@ -243,6 +243,46 @@ def assign_headings(pages: list[list[Block]], config: Config) -> None:
                     level = reinforce_level
                 line.heading_level = level
 
+    if config.heading_demote_title_block:
+        _demote_title_block(pages, config)
+
+
+def _demote_title_block(pages: list[list[Block]], config: Config) -> None:
+    """Degrada el bloque de título del inicio (§A1).
+
+    Muchos documentos abren con varias líneas grandes seguidas (título, subtítulo,
+    fecha/código) que caen todas en el mismo nivel de encabezado y se emiten como
+    `#` repetidos. Si al principio del documento hay >=2 títulos consecutivos del
+    mismo nivel (antes de cualquier texto de cuerpo o de un título de otro nivel),
+    se renumeran a niveles descendentes: #, ##, ###...
+    """
+    if not pages:
+        return
+    prefix: list[Line] = []
+    first_level: int | None = None
+    for block in pages[0]:
+        if block.kind != "text":
+            break
+        for line in block.lines:
+            if not line.text.strip():
+                continue
+            if line.heading_level <= 0:
+                first_level = -1                       # texto de cuerpo: corta
+                break
+            if first_level is None:
+                first_level = line.heading_level
+            if line.heading_level != first_level:
+                break                                  # cambia de nivel: corta
+            prefix.append(line)
+        else:
+            continue
+        break
+
+    if len(prefix) < 2:
+        return
+    for i, line in enumerate(prefix):
+        line.heading_level = min(first_level + i, config.heading_max_levels)
+
 
 _NUMBERED = re.compile(r"^\d+[.)]\s")
 

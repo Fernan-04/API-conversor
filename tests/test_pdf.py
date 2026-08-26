@@ -28,12 +28,13 @@ from doc2md.adapters.inbound import cli
 from doc2md.adapters.outbound.pdf.extract import extract_document
 from doc2md.adapters.outbound.pdf.tables import select_tables
 from doc2md.config import Config
-
-CID = re.compile(r"\(cid:\d+\)")
+from doc2md.text_utils import normalize_unicode
 
 
 def _words(text: str) -> set[str]:
-    return set(re.findall(r"\w+", CID.sub("", text).lower()))
+    # `normalize_unicode` repara los glifos `(cid:NNN)` a su carácter real, igual
+    # que el pipeline, para comparar palabras reales contra reales (no el ruido).
+    return set(re.findall(r"\w+", normalize_unicode(text).lower()))
 
 
 def _pdf_words(path: Path) -> set[str]:

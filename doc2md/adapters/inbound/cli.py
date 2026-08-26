@@ -41,6 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keep-repeated", action="store_true", help="Conservar cabeceras y pies repetidos")
     p.add_argument("--no-join", action="store_true", help="Una línea del PDF = una línea del Markdown")
     p.add_argument("--single-column", action="store_true", help="Forzar lectura de una sola columna")
+    p.add_argument("--no-polish", action="store_true",
+                   help="Desactivar el pulido de diseño (Title Case de títulos, "
+                        "jerarquía del bloque de título, clave-valor->tabla, "
+                        "temario->viñetas, autolink de URLs, puntajes **(N)**)")
     p.add_argument("--page-markers", action="store_true", help="Insertar <!-- pagina N -->")
     p.add_argument("--page-break", action="store_true", help="Insertar --- entre páginas")
     p.add_argument("--ocr", action="store_true", help="OCR en páginas sin capa de texto (solo PDF)")
@@ -52,6 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def config_from_args(args: argparse.Namespace) -> Config:
+    polish = not args.no_polish
     return Config(
         extract_tables=not args.no_tables,
         detect_headings=not args.no_headings,
@@ -65,6 +70,15 @@ def config_from_args(args: argparse.Namespace) -> Config:
         ocr=args.ocr,
         ocr_lang=args.ocr_lang,
         verbose=args.verbose,
+        # Pulido de "diseño IA" (§A-D): un solo interruptor desde el CLI.
+        titlecase_headings=polish,
+        heading_strip_trailing_colon=polish,
+        heading_demote_title_block=polish,
+        kv_to_table=polish,
+        autolink_urls=polish,
+        temario_to_bullets=polish,
+        score_bold_parens=polish,
+        merge_orphan_score_row=polish,
     )
 
 

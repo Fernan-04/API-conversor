@@ -1,4 +1,4 @@
-| Verbos para objetivos generales |  | Verbos para objetivos espec(cid:237)ficos |  |
+| Verbos para objetivos generales |  | Verbos para objetivos específicos |  |
 | --- | --- | --- | --- |
 | Analizar | Formular | Advertir | Enumerar |
 | Calcular | Fundamentar | Analizar | Enunciar |

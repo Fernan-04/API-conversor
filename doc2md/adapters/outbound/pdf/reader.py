@@ -13,6 +13,7 @@ modo que la salida Markdown es idéntica a la de pdf2md.
 from __future__ import annotations
 
 import io
+import re
 import sys
 
 from doc2md.adapters.outbound.pdf.clean import clean_document
@@ -30,6 +31,7 @@ from doc2md.domain.errors import (
     PasswordProtectedError,
 )
 from doc2md.domain.models import Document, Element, Heading, ListBlock, Paragraph, Table
+from doc2md.text_utils import title_case_es
 
 
 def _looks_password_protected(exc: Exception) -> bool:
@@ -68,6 +70,19 @@ def _join_lines_raw(texts: list[str], config: Config) -> str:
     return raw
 
 
+def _heading_text(text: str, level: int, config: Config) -> str:
+    """Pule el texto de un título: Title Case (si viene all-caps) y sin `:` final.
+
+    El título de nivel 1 (el titular del documento, p. ej. "SÍLABO") se deja tal
+    cual: es el nombre del documento y suele quererse verbatim.
+    """
+    if config.heading_strip_trailing_colon:
+        text = text.rstrip().removesuffix(":").rstrip()
+    if config.titlecase_headings and level > 1:
+        text = title_case_es(text)
+    return text
+
+
 def _map_text_block(block: Block, config: Config) -> list[Element]:
     """Traduce un bloque de texto a elementos neutrales.
 
@@ -97,7 +112,10 @@ def _map_text_block(block: Block, config: Config) -> list[Element]:
             continue
         if config.detect_headings and line.heading_level > 0:
             flush_para(); flush_list()
-            elements.append(Heading(level=line.heading_level, text=t))
+            elements.append(Heading(
+                level=line.heading_level,
+                text=_heading_text(t, line.heading_level, config),
+            ))
             continue
         rest = _bullet_rest(t, config)
         if rest is not None:
@@ -114,13 +132,83 @@ def _map_text_block(block: Block, config: Config) -> list[Element]:
     return elements
 
 
+# Un campo "N.N Etiqueta: valor". El valor es perezoso: llega hasta el siguiente
+# marcador numérico "N.N" o el fin del texto.
+_KV_ITEM = re.compile(
+    r"(\d+(?:\.\d+)+)\.?\s*([^:]+?):\s*(.+?)(?=\s+\d+(?:\.\d+)+\.?\s|\Z)"
+)
+
+
+def _kv_to_table(text: str, config: Config) -> Table | None:
+    """Convierte un párrafo de campos "N.N Etiqueta: valor" en una tabla 2-col.
+
+    Devuelve `None` si el texto no es claramente un bloque clave-valor (pocos
+    pares o no cubre casi todo el párrafo), para no tocar prosa normal.
+    """
+    if not config.kv_to_table:
+        return None
+    matches = [
+        m for m in _KV_ITEM.finditer(text)
+        if len(m.group(2).strip()) <= config.kv_label_max_len
+    ]
+    if len(matches) < config.kv_min_pairs:
+        return None
+    covered = sum(m.end() - m.start() for m in matches)
+    if covered / max(len(text), 1) < config.kv_min_coverage:
+        return None
+    rows = [["Campo", "Detalle"]]
+    for m in matches:
+        num, label, value = m.group(1), m.group(2).strip(), m.group(3).strip()
+        rows.append([f"{num} {label}", value])
+    return Table(rows=rows)
+
+
+# Corta un temario corrido: fin de oración (".", ")" o "?") seguido de mayúscula,
+# o un marcador de guion antes de mayúscula.
+_TEMARIO_SPLIT = re.compile(
+    r"(?<=[.?])\s+(?=[A-ZÁÉÍÓÚÑ])|\s+[-–]\s*(?=[A-ZÁÉÍÓÚÑ])"
+)
+
+
+def _temario_to_list(text: str, config: Config) -> ListBlock | None:
+    """Parte un párrafo de temario en viñetas. `None` si no salen >= 2 ítems."""
+    if not config.temario_to_bullets:
+        return None
+    items = [s.strip(" -–") for s in _TEMARIO_SPLIT.split(text)]
+    items = [s for s in items if s]
+    if len(items) < 2:
+        return None
+    return ListBlock(items=items)
+
+
 def _map_page(page: list[Block], config: Config) -> list[Element]:
     elements: list[Element] = []
+    triggers = config.bullet_trigger_headings
+    prev_heading = ""
     for block in page:
         if block.kind == "table":
             elements.append(Table(rows=block.rows))
-        else:
-            elements.extend(_map_text_block(block, config))
+            prev_heading = ""
+            continue
+        for el in _map_text_block(block, config):
+            if isinstance(el, Heading):
+                prev_heading = el.text.strip().lower()
+                elements.append(el)
+                continue
+            if isinstance(el, Paragraph):
+                if prev_heading in triggers:
+                    lst = _temario_to_list(el.text, config)
+                    if lst is not None:
+                        elements.append(lst)
+                        prev_heading = ""
+                        continue
+                table = _kv_to_table(el.text, config)
+                if table is not None:
+                    elements.append(table)
+                    prev_heading = ""
+                    continue
+            prev_heading = ""
+            elements.append(el)
     return elements
 
 
