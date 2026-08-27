@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 
+from doc2md.adapters.outbound._table_clean import clean_table
 from doc2md.adapters.outbound._zip_guard import ensure_safe_zip
 from doc2md.config import Config
 from doc2md.domain.errors import CorruptFileError
@@ -21,22 +22,6 @@ def _cell_to_str(value, config: Config) -> str:
     if value is None:
         return ""
     return clean_text(str(value), config)
-
-
-def _trim(rows: list[list[str]]) -> list[list[str]]:
-    """Descarta filas y columnas TOTALMENTE vacías (en cualquier posición).
-
-    Imprescindible para hojas usadas como maquetación visual (p. ej. un diagrama
-    de Gantt), que tienen cientos de columnas y filas vacías intercaladas entre
-    los datos. Mismo criterio que `tidy_rows` para las tablas de PDF.
-    """
-    rows = [r for r in rows if any(c for c in r)]        # fuera filas vacías
-    if not rows:
-        return []
-    ncol = max(len(r) for r in rows)
-    rows = [r + [""] * (ncol - len(r)) for r in rows]
-    keep = [i for i in range(ncol) if any(row[i] for row in rows)]  # cols con datos
-    return [[row[i] for i in keep] for row in rows]
 
 
 class XlsxReader:
@@ -60,7 +45,7 @@ class XlsxReader:
                     if i >= config.xlsx_max_rows:
                         break
                     rows.append([_cell_to_str(c, config) for c in row])
-                rows = _trim(rows)
+                rows = clean_table(rows, config)
                 if rows:
                     ncol = len(rows[0])
                     if ncol > config.xlsx_max_cols:

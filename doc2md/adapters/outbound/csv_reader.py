@@ -19,6 +19,7 @@ from pathlib import Path
 from doc2md.config import Config
 from doc2md.domain.errors import CorruptFileError
 from doc2md.domain.models import Document, Element, Paragraph, Table
+from doc2md.adapters.outbound._table_clean import clean_csv
 from doc2md.adapters.outbound.text_reader import decode_text
 from doc2md.text_utils import clean_text
 
@@ -54,8 +55,9 @@ class CsvReader:
         except Exception as exc:  # noqa: BLE001 — se traduce a error tipificado
             raise CorruptFileError(detail=str(exc)) from exc
 
-        # Descarta filas totalmente vacías (líneas en blanco del CSV).
-        rows = [r for r in rows if any(c.strip() for c in r)]
+        # Normaliza errores de fórmula y descarta filas/columnas vacías (líneas en
+        # blanco del CSV, columnas sin dato). Conservador: no poda ceros/densidad.
+        rows = clean_csv(rows, config)
         if not rows:
             return Document(sections=[])
 

@@ -51,8 +51,38 @@ class Config:
     # Tope de columnas por hoja. Las hojas usadas como maquetación visual (p. ej.
     # un diagrama de Gantt) tienen cientos de columnas de línea de tiempo que no
     # son datos tabulares; se recortan a este ancho con un aviso. Lo reutiliza el
-    # lector CSV/TSV.
+    # lector CSV/TSV. Actúa como RED DE SEGURIDAD final: tras la limpieza de
+    # maquetación (abajo) casi nunca debería dispararse.
     xlsx_max_cols: int = 50
+
+    # ------------------------------------------------------------------ #
+    # Limpieza de hojas de maquetación (Gantt/cronograma) — quitar el RUIDO.
+    # Un Gantt trae cientos de columnas de línea de tiempo casi vacías, errores
+    # de fórmula y bandas de ceros que inflan el .md sin aportar. Reglas en
+    # `adapters/outbound/_table_clean.py`. La poda AGRESIVA (ceros + densidad)
+    # SOLO se activa si la hoja parece maquetación (muy ancha); una hoja de datos
+    # normal (angosta) no la toca.
+    # ------------------------------------------------------------------ #
+    # Recorte de la "cola muerta": las hojas auxiliares tienen la tabla real
+    # arriba y cientos de filas de andamiaje de fórmula debajo (todo vacío/#N/A,
+    # a lo sumo un índice incremental o un cero suelto). Se recortan desde abajo
+    # las filas sin dato real en las columnas de contenido (ver `_table_clean.py`;
+    # las columnas-contador se ignoran). Actúa en cualquier ancho de hoja.
+    xlsx_trim_dead_tail: bool = True
+    xlsx_clean_layout: bool = True
+    # La hoja se considera "maquetación" (y entra a la poda agresiva) si tiene al
+    # menos este nº de columnas tras el recorte de vacíos. Protege las hojas de
+    # datos normales, que nunca llegan a este ancho.
+    xlsx_layout_min_cols: int = 30
+    # Una columna con menos de esta fracción de celdas llenas es la línea de tiempo
+    # del Gantt (~1 celda por columna), no una columna de datos: se descarta. El
+    # hueco entre la tabla real (fill ~0.4) y la banda (fill ~0.01) es amplio.
+    xlsx_min_col_fill: float = 0.08
+    # Strings de error de fórmula de Excel: se tratan como celda vacía.
+    xlsx_error_values: tuple[str, ...] = (
+        "#N/A", "#REF!", "#VALUE!", "#DIV/0!",
+        "#NAME?", "#NULL!", "#NUM!", "#GETTING_DATA",
+    )
 
     # ------------------------------------------------------------------ #
     # Límites de recursos por petición (endurecimiento de seguridad)

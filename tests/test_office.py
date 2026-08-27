@@ -6,8 +6,26 @@ reales de estos formatos en el repo.
 
 from __future__ import annotations
 
+import io
+
 from doc2md import convert
 from doc2md.config import Config
+
+from conftest import GANTT, requires_gantt
+
+
+def _xlsx_from_rows(rows, title="Hoja"):
+    """Construye un .xlsx en memoria a partir de filas (para los tests)."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = title
+    for r in rows:
+        ws.append(r)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 # --------------------------------------------------------------------------- #
@@ -159,3 +177,80 @@ def test_xlsx_empty_columns_dropped():
     md = convert(buf.getvalue(), Config(), filename="huecos.xlsx")
     assert "| A | B |" in md
     assert "| 1 | 2 |" in md
+
+
+# --------------------------------------------------------------------------- #
+# XLSX — limpieza de hojas de maquetación (Gantt/cronograma): quitar el ruido
+# --------------------------------------------------------------------------- #
+
+def test_xlsx_error_values_normalized():
+    """Los errores de fórmula (#N/A, #REF!…) se tratan como celda vacía."""
+    data = _xlsx_from_rows([
+        ["Nombre", "Valor", "Extra"],
+        ["Ana", 10, "#N/A"],
+        ["Beto", "#REF!", "ok"],
+    ])
+    md = convert(data, Config(), filename="errores.xlsx")
+    assert "#N/A" not in md and "#REF!" not in md
+    assert "Ana" in md and "Beto" in md and "ok" in md
+
+
+def test_xlsx_dead_tail_trimmed():
+    """La cola muerta (solo un índice incremental / ceros) se recorta."""
+    rows = [["Actividad", "Responsable", "Estado"],
+            ["Diseño", "Alumno 1", "Completado"],
+            ["Pruebas", "Alumno 2", "En Proceso"]]
+    # 40 filas de andamiaje: solo un contador en la 1ª columna, resto vacío.
+    for i in range(1, 41):
+        rows.append([i, None, None])
+    md = convert(_xlsx_from_rows(rows), Config(), filename="cola.xlsx")
+    assert "Diseño" in md and "En Proceso" in md      # la tabla real sobrevive
+    assert md.count("\n| ") < 8                          # la cola muerta se fue
+
+
+def test_xlsx_single_int_column_preserved():
+    """Salvaguarda: una lista de una sola columna de enteros NO se borra como cola."""
+    data = _xlsx_from_rows([[i] for i in range(1, 31)])
+    md = convert(data, Config(), filename="ids.xlsx")
+    assert "| 30 |" in md and "| 1 |" in md              # se conservan todos
+
+
+def test_xlsx_layout_timeline_columns_dropped():
+    """Una hoja ancha tipo Gantt pierde la banda de columnas de línea de tiempo
+    (casi vacías), pero conserva la tabla real de la izquierda."""
+    # Cabecera SIN etiquetas de banda (como una línea de tiempo sin encabezado
+    # denso) y 20 filas de datos donde la banda de 40 columnas está casi vacía:
+    # cada columna recibe a lo sumo una marca -> fill << 0.08 -> se descarta.
+    rows = [["Actividad", "Responsable", "Estado"] + [""] * 40]
+    for a in range(40):
+        row = [f"Act {a}", f"Alumno {a % 3}", "Completado"] + [""] * 40
+        row[3 + a] = "x"            # una marca por columna de la banda (fill ~1/41)
+        rows.append(row)
+    md = convert(_xlsx_from_rows(rows), Config(), filename="gantt.xlsx")
+    assert "Act 0" in md and "Completado" in md
+    # La cabecera de la tabla no debe arrastrar las 40 columnas de la banda.
+    header_line = next(l for l in md.splitlines() if l.startswith("| Actividad "))
+    assert header_line.count("|") <= 8                   # ~3-4 columnas reales
+
+
+def test_xlsx_normal_sheet_unchanged():
+    """Regresión: una hoja de datos normal (angosta y llena) queda intacta."""
+    data = _xlsx_from_rows([
+        ["Producto", "Cantidad", "Precio"],
+        ["Manzana", 10, 5],
+        ["Pera", 3, 8],
+    ], title="Datos")
+    md = convert(data, Config(), filename="datos.xlsx")
+    assert "| Producto | Cantidad | Precio |" in md
+    assert "| Manzana | 10 | 5 |" in md
+    assert "| Pera | 3 | 8 |" in md
+
+
+@requires_gantt
+def test_xlsx_real_gantt_cleaned():
+    """El Gantt real se reduce drásticamente sin perder los datos valiosos."""
+    md = convert(str(GANTT))
+    assert len(md) < 15000                               # hoy sin limpiar: ~42 KB
+    assert md.count("\n") < 200                           # hoy sin limpiar: ~580
+    for label in ("Completado", "Alumno 1", "Alumno 3", "FASE 1", "ESTADO", "AVANCE"):
+        assert label in md, f"se perdió un dato real: {label}"

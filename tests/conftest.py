@@ -33,6 +33,14 @@ requires_apf1 = pytest.mark.skipif(
     not APF1.exists(), reason="falta pdfs/APF1_INDICACION.pdf (PDF de calibración)"
 )
 
+# XLSX real de un cronograma/Gantt (hoja de maquetación con cientos de columnas de
+# línea de tiempo y una hoja auxiliar de fechas con cola muerta de #N/A). Documento
+# del usuario, no versionado; si está en pdfs/, el test de limpieza corre.
+GANTT = PDFS / "Cronograma de Actividades1 - Gants.xlsx"
+requires_gantt = pytest.mark.skipif(
+    not GANTT.exists(), reason="falta pdfs/Cronograma de Actividades1 - Gants.xlsx (Gantt real)"
+)
+
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
     """Inserta un hipervínculo externo en el párrafo (python-docx no tiene API)."""
