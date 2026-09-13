@@ -67,8 +67,12 @@ class Config:
     # gratuito de Render: cada imagen puede tardar 1-2s).
     ocr_max_images: int = 30
     # Tiempo máximo (segundos) por imagen antes de abandonar esa imagen (nunca
-    # aborta toda la conversión).
-    ocr_timeout: float = 20.0
+    # aborta toda la conversión). Medido en producción: con 20s, UNA sola
+    # imagen lenta podía comerse casi todo el presupuesto total ella sola
+    # (`ocr_total_budget_seconds` solo evita EMPEZAR otra imagen, no puede
+    # cortar una ya en curso) — bajarlo es lo que de verdad acota el peor caso,
+    # no el presupuesto total por sí solo.
+    ocr_timeout: float = 6.0
     # Presupuesto de tiempo TOTAL (segundos) para el OCR de imágenes de todo el
     # documento (medido de verdad, no estimado). En el plan gratis de Render
     # (CPU compartida y lenta) un documento con varias imágenes grandes puede
