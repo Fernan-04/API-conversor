@@ -42,12 +42,14 @@ def _escape(text: str) -> str:
 _URL_RE = re.compile(r"https?://[^\s)]+")
 
 
-def _url_label(url: str) -> str:
+def _url_label(url: str, lang: str) -> str:
     host = re.sub(r"^https?://", "", url).split("/", 1)[0]
-    return "Ver en biblioteca" if "biblioteca" in host.lower() else host
+    if "biblioteca" in host.lower():
+        return "View in library" if lang == "en" else "Ver en biblioteca"
+    return host
 
 
-def _render_inline(text: str, config: Config) -> str:
+def _render_inline(text: str, config: Config, lang: str = "es") -> str:
     """Escapa el texto y, si procede, convierte URLs sueltas en enlaces Markdown.
 
     El autolinking se hace ANTES de escapar cada tramo, porque `_escape` rompería
@@ -62,7 +64,7 @@ def _render_inline(text: str, config: Config) -> str:
         url = raw.rstrip(".,;:)]")           # puntuación final que no es de la URL
         trailing = raw[len(url):]
         out.append(_escape(text[last:m.start()]))
-        out.append(f"[{_url_label(url)}]({url})")
+        out.append(f"[{_url_label(url, lang)}]({url})")
         out.append(_escape(trailing))
         last = m.end()
     out.append(_escape(text[last:]))
@@ -129,7 +131,7 @@ def _render_list_items(items: "list[ListItem]", config: Config) -> str:
     return "\n".join(lines)
 
 
-def _render_element(el: Element, config: Config) -> str:
+def _render_element(el: Element, config: Config, lang: str = "es") -> str:
     if isinstance(el, Heading):
         text = el.text.strip()
         if not text:
@@ -138,14 +140,14 @@ def _render_element(el: Element, config: Config) -> str:
     if isinstance(el, Paragraph):
         if el.spans is not None:
             return _render_spans(el.spans, config)   # negrita/cursiva/enlaces ya en los spans
-        text = _render_inline(el.text, config)
+        text = _render_inline(el.text, config, lang)
         if config.mark_bold and el.strong and text:
             text = f"**{text}**"
         return text
     if isinstance(el, ListBlock):
         if el.rich_items is not None:
             return _render_list_items(el.rich_items, config)
-        return "\n".join("- " + _render_inline(item, config) for item in el.items if item)
+        return "\n".join("- " + _render_inline(item, config, lang) for item in el.items if item)
     if isinstance(el, Table):
         return _render_table(el.rows)
     if isinstance(el, Raw):
@@ -160,11 +162,12 @@ class MarkdownRendererImpl:
     def render(self, document: Document, config: Config) -> str:
         parts: list[str] = []
         last = len(document.sections) - 1
+        lang = document.language
         for si, elements in enumerate(document.sections):
             if config.page_markers:
                 parts.append(f"<!-- pagina {si + 1} -->")
             for el in elements:
-                rendered = _render_element(el, config)
+                rendered = _render_element(el, config, lang)
                 if rendered:
                     parts.append(rendered)
             if config.page_break and si < last:

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from doc2md.config import Config
-from doc2md.text_utils import normalize_unicode, strip_pua
+from doc2md.text_utils import fix_punct_spacing, normalize_unicode, strip_pua
 
 _NUM = re.compile(r"^\d+([.,]\d+)?$")
 _DASHES = re.compile(r"^-{2,}$")
@@ -45,7 +45,7 @@ def _clean_cell(cell: str | None, config: Config) -> str:
     if not cell:
         return ""
     text = normalize_unicode(strip_pua(cell, config)).replace("\n", " ")
-    return " ".join(text.split())
+    return fix_punct_spacing(" ".join(text.split()))
 
 
 def tidy_rows(rows: list[list], config: Config) -> list[list[str]]:
@@ -72,6 +72,33 @@ def _cell_concentration(rows: list[list[str]]) -> float:
     if not total:
         return 0.0
     return max(len(c) for c in texts) / total
+
+
+def _avg_cell_len(rows: list[list[str]]) -> float:
+    cells = [c for row in rows for c in row if c]
+    return sum(len(c) for c in cells) / len(cells) if cells else 0.0
+
+
+def is_clean_data_table(rows: list[list[str]], config: Config) -> bool:
+    """Vía alterna (§Ronda 6): tabla de 2-3 columnas OBVIAMENTE tabular.
+
+    Criterios estrictos (todas las celdas casi siempre llenas, ninguna celda
+    gigante, texto corto): "Criterio | Puntaje", "Fase | Fecha". Independiente
+    de `table_min_cols` (que sigue siendo agresivo para el resto de casos, ver
+    comentario en `Config`).
+    """
+    if not rows:
+        return False
+    ncol = len(rows[0])
+    if not (config.table_clean_min_cols <= ncol <= config.table_clean_max_cols):
+        return False
+    if len(rows) < config.table_clean_min_rows:
+        return False
+    if _fill_ratio(rows) < config.table_clean_min_fill:
+        return False
+    if _cell_concentration(rows) > config.table_clean_max_cell_concentration:
+        return False
+    return _avg_cell_len(rows) <= config.table_clean_max_avg_cell_len
 
 
 def is_bullet_list(rows: list[list[str]], config: Config) -> bool:
@@ -279,12 +306,16 @@ def select_tables(
         if is_bullet_list(rows, config):
             log(f"[tabla] {tag} -> descartada (lista de viñetas, va como texto)")
             continue
-        if ncol < config.table_min_cols:
-            log(f"[tabla] {tag} -> descartada (columnas {ncol} < min {config.table_min_cols})")
-            continue
-        if conc > config.table_max_cell_concentration:
-            log(f"[tabla] {tag} -> descartada (una celda concentra {conc:.2f} del texto)")
-            continue
+        clean_data_table = is_clean_data_table(rows, config)
+        if not clean_data_table:
+            if ncol < config.table_min_cols:
+                log(f"[tabla] {tag} -> descartada (columnas {ncol} < min {config.table_min_cols})")
+                continue
+            if conc > config.table_max_cell_concentration:
+                log(f"[tabla] {tag} -> descartada (una celda concentra {conc:.2f} del texto)")
+                continue
+        else:
+            log(f"[tabla] {tag} -> tabla de datos limpia ({ncol} col), vía alterna")
 
         rows = polish_rows(rows, config, log, tag)
         log(f"[tabla] {tag} -> ACEPTADA")

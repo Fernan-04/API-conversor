@@ -1,6 +1,6 @@
 [project]
 name = "doc2md"
-version = "0.2.0"
+version = "0.3.0"
 description = "Conversor local multi-formato (PDF/DOCX/PPTX/XLSX) a Markdown."
 requires-python = ">=3.10"
 # Cotas superiores para builds reproducibles en Render (evita que una versión
@@ -14,7 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 api = ["fastapi>=0.110,<1", "uvicorn[standard]>=0.29,<1", "python-multipart>=0.0.9,<1"]
-ocr = ["pytesseract", "pillow"]
+ocr = ["pytesseract>=0.3.10,<0.4", "pillow>=10,<12"]
 dev = ["pytest", "httpx"]
 
 [project.scripts]

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from doc2md.adapters.outbound.csv_reader import CsvReader
 from doc2md.adapters.outbound.docx_reader import DocxReader
+from doc2md.adapters.outbound.html_reader import HtmlReader
 from doc2md.adapters.outbound.pdf.reader import PdfReader
 from doc2md.adapters.outbound.pptx_reader import PptxReader
 from doc2md.adapters.outbound.text_reader import TextReader
@@ -28,6 +29,8 @@ _READERS: dict[str, DocumentReader] = {
     ".md": TextReader(),
     ".csv": CsvReader(),
     ".tsv": CsvReader(),
+    ".html": HtmlReader(),
+    ".htm": HtmlReader(),
 }
 
 

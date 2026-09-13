@@ -74,7 +74,7 @@ _TITLE_ACRONYMS = frozenset(
 )
 
 
-def _is_all_caps(text: str) -> bool:
+def is_all_caps(text: str) -> bool:
     """True si el texto no tiene minúsculas y sí al menos una mayúscula."""
     has_upper = False
     for ch in text:
@@ -94,7 +94,7 @@ def title_case_es(text: str) -> str:
     tal cual, para no estropear texto bien formado. Conserva siglas (`_TITLE_ACRONYMS`)
     y cualquier token con dígitos (APF1, PC2).
     """
-    if not text or not _is_all_caps(text):
+    if not text or not is_all_caps(text):
         return text
     words = text.split(" ")
     out: list[str] = []
@@ -111,6 +111,105 @@ def title_case_es(text: str) -> str:
     return " ".join(out)
 
 
+# Palabras menores en inglés que van en minúscula dentro de un título (salvo si
+# son la primera o última palabra), estilo Title Case editorial en-US.
+_TITLE_MINOR_EN = frozenset(
+    "a an the and or but nor for so yet as at by in of on to up via vs "
+    "with from into onto than".split()
+)
+
+
+def title_case_en(text: str) -> str:
+    """Convierte un título EN MAYÚSCULAS a Title Case en inglés.
+
+    Análogo a `title_case_es`: solo actúa si el texto viene todo en mayúsculas.
+    Primera y última palabra siempre capitalizadas; las palabras menores
+    (`_TITLE_MINOR_EN`) van en minúscula en medio del título.
+    """
+    if not text or not is_all_caps(text):
+        return text
+    words = text.split(" ")
+    last = len(words) - 1
+    out: list[str] = []
+    for i, w in enumerate(words):
+        if not w:
+            out.append(w)
+            continue
+        if any(c.isdigit() for c in w):
+            out.append(w)
+        elif 0 < i < last and w.lower() in _TITLE_MINOR_EN:
+            out.append(w.lower())
+        else:
+            out.append(w.capitalize())
+    return " ".join(out)
+
+
+def title_case(text: str, lang: str = "es") -> str:
+    """Despacha a `title_case_es`/`title_case_en` según `lang` (§Ronda 6)."""
+    return title_case_en(text) if lang == "en" else title_case_es(text)
+
+
+# --------------------------------------------------------------------------- #
+# Detección de idioma (§Ronda 6) — sin dependencias, basada en stopwords.
+# --------------------------------------------------------------------------- #
+
+# Palabras funcionales muy frecuentes y casi exclusivas de cada idioma. No hace
+# falta una lista exhaustiva: basta con que discrimine sobre prosa real.
+_STOPWORDS_ES = frozenset(
+    "el la los las de del que y en un una para con por como su es son al se "
+    "los su desde entre sobre pero más también sin ya fue eran esta este "
+    "esa ese sus les nos o e u a".split()
+)
+_STOPWORDS_EN = frozenset(
+    "the and of in on at to for by as is are that this with from or an a "
+    "be was were will would can could should their its into about which "
+    "these those has have had not".split()
+)
+
+_WORD_RE = re.compile(r"[a-záéíóúñü]+", re.IGNORECASE)
+
+
+def detect_language(text: str) -> str:
+    """Detecta si `text` está en español o inglés ("es"/"en"), sin dependencias.
+
+    Cuenta ocurrencias de *stopwords* de cada idioma sobre una muestra del
+    texto. Con texto insuficiente o empate, por defecto "es" (idioma histórico
+    del proyecto). Pensado para llamarse una vez por documento (no por línea).
+    """
+    words = [w.lower() for w in _WORD_RE.findall(text[:20000])]
+    if len(words) < 8:
+        return "es"
+    es_hits = sum(1 for w in words if w in _STOPWORDS_ES)
+    en_hits = sum(1 for w in words if w in _STOPWORDS_EN)
+    return "en" if en_hits > es_hits else "es"
+
+
+# --------------------------------------------------------------------------- #
+# Espaciado de puntuación (§Ronda 6) — arregla el "espacio antes de la coma"
+# que dejan algunos PDFs maquetados con separación de caracteres manual
+# ("aprendizaje , creatividad" -> "aprendizaje, creatividad").
+# --------------------------------------------------------------------------- #
+
+# Cierre de puntuación: sin espacio ANTES. No incluye ¿/¡ (son apertura) ni
+# guiones (ya normalizados) ni comillas (ambiguas: pueden abrir o cerrar).
+_SPACE_BEFORE_CLOSE = re.compile(r"[ \t]+([,.;:!?)\]»])")
+# Apertura de puntuación: sin espacio DESPUÉS.
+_SPACE_AFTER_OPEN = re.compile(r"([(\[«])[ \t]+")
+
+
+def fix_punct_spacing(text: str) -> str:
+    """Quita el espacio sobrante antes de cierres y después de aperturas.
+
+    No toca saltos de línea ni colapsa espacios múltiples en otro contexto;
+    solo corrige la separación pegada a estos signos de puntuación.
+    """
+    if not text:
+        return text
+    text = _SPACE_BEFORE_CLOSE.sub(r"\1", text)
+    text = _SPACE_AFTER_OPEN.sub(r"\1", text)
+    return text
+
+
 def clean_text(text: str, config: Config) -> str:
     """Normaliza Unicode, descarta glifos PUA y colapsa espacios/tabs/saltos.
 
@@ -120,4 +219,4 @@ def clean_text(text: str, config: Config) -> str:
     espacios), así que la garantía de regresión de PDF no se ve afectada.
     """
     text = normalize_unicode(strip_pua(text, config))
-    return " ".join(text.split())
+    return fix_punct_spacing(" ".join(text.split()))

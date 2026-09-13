@@ -8,10 +8,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Tesseract + paquetes de idioma (español e inglés) para el OCR de imágenes
+# grandes sin texto real (§Ronda 6: portadas/infografías exportadas como
+# imagen). `--no-install-recommends` evita arrastrar dependencias gráficas
+# innecesarias en la imagen headless.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+
 # Instalar primero los metadatos + el paquete (aprovecha la caché de capas).
 COPY pyproject.toml README.md ./
 COPY doc2md ./doc2md
-RUN pip install --no-cache-dir ".[api]"
+RUN pip install --no-cache-dir ".[api,ocr]"
 
 # Ejecutar como usuario sin privilegios (no root) — reduce el impacto si el
 # proceso se ve comprometido al parsear un archivo malicioso.

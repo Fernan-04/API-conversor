@@ -49,6 +49,16 @@ def test_convert_multiple_returns_zip(docx_bytes):
     assert "# Título Principal" in zf.read("doc.md").decode("utf-8")
 
 
+def test_convert_html_pasted_text():
+    """El endpoint acepta `.html` (texto pegado con formato, §Ronda 6)."""
+    html = b"<h1>Titulo</h1><p>Un parrafo con <b>negrita</b>.</p>"
+    r = client.post("/convert", files={"files": ("pegado.html", html, "text/html")})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/markdown")
+    assert "# Titulo" in r.text
+    assert "**negrita**" in r.text
+
+
 def test_convert_unsupported_format():
     r = client.post("/convert", files={"files": ("archivo.xyz", b"hola", "application/octet-stream")})
     assert r.status_code == 400

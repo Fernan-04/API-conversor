@@ -30,9 +30,54 @@ class Config:
     page_markers: bool = False         # --page-markers  -> <!-- pagina N -->
     page_break: bool = False           # --page-break    -> --- entre páginas
     overwrite: bool = False            # --overwrite
-    ocr: bool = False                  # --ocr
-    ocr_lang: str = "spa"              # --ocr-lang
+    ocr: bool = False                  # --ocr (fuerza OCR de página completa aunque SÍ haya texto)
+    ocr_lang: str = "spa+eng"          # --ocr-lang (idiomas de Tesseract, separados por "+")
     verbose: bool = False              # -v/--verbose
+
+    # ------------------------------------------------------------------ #
+    # OCR de imágenes grandes SIN texto encima (§Ronda 6) — distinto del flag
+    # `ocr` de arriba (que fuerza OCR de página ENTERA solo cuando la página no
+    # tiene ninguna capa de texto). Muchos documentos maquetados (portadas,
+    # infografías) insertan una imagen a página completa que SÍ contiene texto
+    # visualmente, pero el PDF no trae ninguna capa de texto sobre ella (el
+    # texto está "quemado" en el píxel). Sin esto, esas páginas se pierden por
+    # completo. Se activa automáticamente si Tesseract está disponible
+    # (`ocr.available()`); si no lo está, se inserta un aviso visible en vez de
+    # perder el contenido en silencio (nunca falla en silencio).
+    # ------------------------------------------------------------------ #
+    ocr_images: bool = True
+    # Una imagen cuya área (ancho x alto) ocupa al menos esta fracción del área
+    # de la página se considera candidata a "imagen con texto" (infografía,
+    # diapositiva escaneada). Imágenes pequeñas (logos, iconos) se ignoran.
+    # Con Tesseract disponible este umbral puede ser generoso: si la imagen es
+    # solo decorativa (una foto), el OCR simplemente no reconoce nada útil y no
+    # se inserta nada (sin ruido).
+    ocr_image_min_area_ratio: float = 0.12
+    # SIN Tesseract disponible no hay forma de distinguir "foto decorativa" de
+    # "infografía con texto real": insertar un aviso por cada imagen grande
+    # sería ruido en documentos con muchas fotos. Por eso el aviso VISIBLE
+    # (`ocr.available()` False) exige un umbral más alto y estricto — pensado
+    # para el caso claro de una imagen que ocupa prácticamente toda la página
+    # (portada/diapositiva escaneada sin ninguna otra imagen grande al lado).
+    ocr_placeholder_min_area_ratio: float = 0.5
+    # Confianza mínima (0-100, escala de Tesseract) para aceptar una palabra
+    # reconocida; por debajo se descarta como ruido.
+    ocr_min_conf: float = 40.0
+    # Tope de imágenes OCR-eadas por documento (protege el cómputo del plan
+    # gratuito de Render: cada imagen puede tardar 1-2s).
+    ocr_max_images: int = 30
+    # Tiempo máximo (segundos) por imagen antes de abandonar esa imagen (nunca
+    # aborta toda la conversión).
+    ocr_timeout: float = 20.0
+    # Algunos PDFs maquetados (ej. exportados con "negrita falsa") dibujan cada
+    # glifo dos veces superpuesto en vez de usar una fuente bold real: el texto
+    # sale duplicado letra a letra ("Hackatón Hackatón" o peor, "Aassppeeccttoo").
+    # `page.dedupe_chars()` de pdfplumber colapsa glifos superpuestos (mismo
+    # texto, misma posición dentro de `dedupe_tolerance` puntos) antes de
+    # extraer palabras o tablas. No afecta a PDFs normales (no tienen glifos
+    # duplicados que colapsar).
+    dedupe_chars: bool = True
+    dedupe_tolerance: float = 1.0
 
     # ------------------------------------------------------------------ #
     # Formatos y límites (Fase 1/2)
@@ -41,6 +86,7 @@ class Config:
     supported_extensions: tuple[str, ...] = (
         ".pdf", ".docx", ".pptx", ".xlsx",
         ".txt", ".md", ".csv", ".tsv",
+        ".html", ".htm",
     )
     # Límite de tamaño de archivo para la API (evita saturar la memoria del plan
     # gratuito de Railway/Render). 25 MB por decisión de proyecto.
@@ -127,6 +173,25 @@ class Config:
     titlecase_headings: bool = True
     heading_strip_trailing_colon: bool = True
     heading_demote_title_block: bool = True
+    # Fusiona títulos consecutivos del MISMO nivel dentro de una página en uno
+    # solo (§Ronda 6). Un título grande que ocupa varias líneas visuales
+    # ("Objetivo del" / "Hackatón") se detecta hoy como títulos SEPARADOS del
+    # mismo nivel; si el primero no termina en puntuación de cierre de frase
+    # (. : ; ? !), se asume que es el mismo título partido y se unen con un
+    # espacio. No fusiona títulos que ya cierran su propia frase.
+    merge_consecutive_headings: bool = True
+
+    # ------------------------------------------------------------------ #
+    # Decoración de maquetación (§Ronda 6) — "etiquetas eyebrow": rótulos de
+    # pestaña/portada muy cortos (p.ej. "COVER", "BASES", "N°7") que anteceden
+    # al título real de la página. `_remove_repeated` (arriba) ya quita los que
+    # repiten el MISMO texto en >= repeated_page_ratio de páginas; esto cubre
+    # los que cambian de texto por página pero cumplen el mismo patrón
+    # estructural: son el PRIMER elemento de la página, muy cortos, sin punto
+    # final, y les sigue inmediatamente un título real. Un párrafo corto
+    # legítimo sin título detrás nunca se toca.
+    remove_furniture: bool = True
+    furniture_max_words: int = 3
 
     # ------------------------------------------------------------------ #
     # Bloque clave-valor -> tabla (§B). Un párrafo que en realidad son campos
@@ -138,17 +203,32 @@ class Config:
     kv_min_pairs: int = 3
     kv_min_coverage: float = 0.75
     kv_label_max_len: int = 40
+    # Cabecera de la tabla clave-valor por idioma detectado del documento
+    # (§Ronda 6, ver `text_utils.detect_language`). "es" es el default.
+    kv_table_headers: dict[str, tuple[str, str]] = field(
+        default_factory=lambda: {
+            "es": ("Campo", "Detalle"),
+            "en": ("Field", "Detail"),
+        }
+    )
 
     # URLs sueltas -> enlace Markdown [etiqueta](url) (§D). La etiqueta es el host;
-    # si el host menciona "biblioteca" se usa "Ver en biblioteca" (caso UTP).
+    # si el host menciona "biblioteca" se usa "Ver en biblioteca"/"View in
+    # library" según el idioma del documento (caso UTP).
     autolink_urls: bool = True
 
     # Temario corrido -> lista de viñetas (§B). SOLO se aplica al párrafo que sigue
     # a un título cuyo texto está en `bullet_trigger_headings` (no a prosa normal,
     # que también tiene límites de oración). Se parte por fin de oración (".+May")
-    # y por marcadores de guion; se exige >= 2 ítems para convertir.
+    # y por marcadores de guion; se exige >= 2 ítems para convertir. Se listan
+    # los disparadores de ambos idiomas juntos (§Ronda 6): comparar contra el
+    # texto REAL del título, no contra el idioma detectado del documento, así
+    # que no hace falta distinguir por idioma aquí.
     temario_to_bullets: bool = True
-    bullet_trigger_headings: tuple[str, ...] = ("temario",)
+    bullet_trigger_headings: tuple[str, ...] = (
+        "temario", "contenido", "contenidos",
+        "syllabus", "course outline", "contents", "topics",
+    )
 
     # ------------------------------------------------------------------ #
     # Negritas (§2)
@@ -184,6 +264,22 @@ class Config:
     #     miden ~3x la página, pero contienen rúbrica real -> tampoco descarta.
     table_report_fill: float = 0.4     # umbral solo para colorear el log
     table_report_height_ratio: float = 1.3
+
+    # ------------------------------------------------------------------ #
+    # Vía alterna de aceptación: "tabla de datos limpia" de 2-3 columnas
+    # (§Ronda 6). `table_min_cols=4` es agresivo a propósito (calibrado contra
+    # rúbricas UTP) y descarta tablas reales de 2-3 columnas muy comunes
+    # ("Criterio | Puntaje", "Fase | Fecha"). Para no tocar esa calibración, se
+    # añade una vía SEPARADA con criterios más estrictos en llenado y
+    # concentración (nada de "una celda gigante" ni huecos), que solo acepta
+    # tablas obviamente tabulares de pocas columnas.
+    # ------------------------------------------------------------------ #
+    table_clean_min_cols: int = 2
+    table_clean_max_cols: int = 3
+    table_clean_min_rows: int = 3
+    table_clean_min_fill: float = 0.8
+    table_clean_max_cell_concentration: float = 0.35
+    table_clean_max_avg_cell_len: float = 60.0
 
     # Detector de listas de viñetas mal detectadas como tabla de 2 columnas
     # (APF1 p1/p2): una columna vacía en >= ratio de las filas y la otra

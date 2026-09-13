@@ -41,6 +41,18 @@ requires_gantt = pytest.mark.skipif(
     not GANTT.exists(), reason="falta pdfs/Cronograma de Actividades1 - Gants.xlsx (Gantt real)"
 )
 
+# PDF de diseño real (Ronda 6): documento maquetado con títulos decorativos
+# grandes, imágenes de página completa sin capa de texto (Art. 7), tablas
+# "Criterio | Puntaje" / "Fase | Fecha" y bloques "Etiqueta: valor" en párrafo
+# corrido. Sirve de banco de calibración para precisión PDF. No se versiona
+# (pesa ~6 MB); si está en pdfs/, el test de calidad corre. La referencia de
+# "diseño IA" (`hackaton-2026.claude-reference.md`) SÍ se versiona en fixtures/.
+HACKATON = PDFS / "hackaton-2026.pdf"
+HACKATON_REFERENCE = FIXTURES / "hackaton-2026.claude-reference.md"
+requires_hackaton = pytest.mark.skipif(
+    not HACKATON.exists(), reason="falta pdfs/hackaton-2026.pdf (PDF de calibración de diseño)"
+)
+
 
 def _add_hyperlink(paragraph, text: str, url: str) -> None:
     """Inserta un hipervínculo externo en el párrafo (python-docx no tiene API)."""

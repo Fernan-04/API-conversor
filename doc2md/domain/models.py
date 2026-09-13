@@ -95,5 +95,11 @@ class Document:
     Una "sección" representa una frontera natural del origen: página (PDF),
     diapositiva (PPTX) u hoja (XLSX). DOCX produce una sola sección. El renderer
     usa estas fronteras para `--page-markers` / `--page-break`.
+
+    `language` ("es"/"en", §Ronda 6): idioma detectado del documento. Lo pone
+    el LECTOR (hoy solo el de PDF; el resto queda en "es" por defecto, su
+    idioma histórico) y lo usa el renderer para decisiones de presentación que
+    dependen del idioma (p. ej. la etiqueta del autolink de URLs).
     """
     sections: list[list[Element]] = field(default_factory=list)
+    language: str = "es"

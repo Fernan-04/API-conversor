@@ -44,4 +44,5 @@ def test_router_lists_supported():
     exts = router.supported_extensions()
     assert set(exts) == {
         ".pdf", ".docx", ".pptx", ".xlsx", ".txt", ".md", ".csv", ".tsv",
+        ".html", ".htm",
     }

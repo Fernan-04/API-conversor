@@ -144,6 +144,8 @@ def extract_document(
                 detail=f"pages={n_pages} > {config.pdf_max_pages}",
             )
         for page in pdf.pages:
+            if config.dedupe_chars:
+                page = page.dedupe_chars(tolerance=config.dedupe_tolerance)
             accepted = []
             if config.extract_tables:
                 accepted = select_tables(page.find_tables(), page, config, log.append)
@@ -172,6 +174,12 @@ def extract_document(
             # OCR de páginas sin capa de texto (§2, solo si se pidió y está disponible).
             if not lines and not accepted and config.ocr and ocr_mod.available():
                 blocks = _ocr_blocks(page, config, log.append)
+            else:
+                # OCR de imágenes grandes sin texto real encima (§Ronda 6): una
+                # infografía o portada exportada como imagen no debe perderse
+                # solo porque el resto de la página SÍ tiene texto normal.
+                blocks.extend(_ocr_big_images(page, kept, config, log.append))
+                blocks.sort(key=lambda b: b.top)
 
             if lines or accepted or blocks:
                 pages_with_text += 1
@@ -197,6 +205,78 @@ def _ocr_blocks(page, config: Config, log) -> list[Block]:
     if config.verbose and lines:
         log(f"[ocr] p{page.page_number}: {len(lines)} líneas reconocidas")
     return _group_paragraphs(lines) if lines else []
+
+
+def _image_bbox(im: dict) -> Bbox:
+    return (im["x0"], im["top"], im["x1"], im["bottom"])
+
+
+def _ocr_big_images(page, kept_words: list[dict], config: Config, log) -> list[Block]:
+    """OCR de imágenes grandes sin texto real encima (§Ronda 6).
+
+    Muchas portadas/infografías se exportan como una imagen a página completa
+    (o casi) sin ninguna capa de texto sobre ella: sin esto, esa página se
+    pierde por completo. Se ignoran imágenes pequeñas (`ocr_image_min_area_ratio`)
+    y las que ya tienen texto real superpuesto (evita duplicar un título vector
+    dibujado encima de un fondo decorativo). Si Tesseract no está disponible, se
+    inserta un aviso VISIBLE en el propio Markdown en vez de perder el contenido
+    en silencio.
+    """
+    if not config.ocr_images or not getattr(page, "images", None):
+        return []
+    page_area = float(page.width or 0) * float(page.height or 0)
+    if page_area <= 0:
+        return []
+    blocks: list[Block] = []
+    done = 0
+    for im in page.images:
+        if done >= config.ocr_max_images:
+            break
+        bbox = _image_bbox(im)
+        area = max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
+        if area / page_area < config.ocr_image_min_area_ratio:
+            continue
+        overlapping_real_text = sum(
+            1 for w in kept_words
+            if _inside((w["x0"] + w["x1"]) / 2, (w["top"] + w["bottom"]) / 2, bbox)
+        )
+        if overlapping_real_text > 5:
+            continue   # ya hay texto real sobre esta imagen: no duplicar
+        if not ocr_mod.available():
+            if area / page_area < config.ocr_placeholder_min_area_ratio:
+                continue   # sin OCR no se sabe si es foto decorativa o texto: sin ruido
+            done += 1
+            # Texto plano (sin sintaxis Markdown): el renderer escapa los
+            # párrafos normales y un "*" literal saldría como "\*" (negrita
+            # rota), no en cursiva.
+            blocks.append(Block(kind="text", top=bbox[1], lines=[Line(
+                text=f"[Imagen en la página {page.page_number}: su contenido "
+                     f"no se pudo extraer — instala Tesseract para activar "
+                     f"el OCR]",
+                size=0.0, bold=False, top=bbox[1], x0=bbox[0],
+            )]))
+            log(f"[ocr] p{page.page_number}: imagen grande sin OCR disponible "
+                f"(aviso insertado, ratio área={area / page_area:.2f})")
+            continue
+        done += 1
+        try:
+            texts = ocr_mod.ocr_image_region(page, bbox, config)
+        except Exception as exc:  # noqa: BLE001 — el OCR nunca debe romper el lote
+            log(f"[ocr] p{page.page_number}: OCR de imagen falló: {exc}")
+            continue
+        cleaned = [
+            c for t in texts
+            if (c := normalize_unicode(strip_pua(t, config)).strip())
+        ]
+        if not cleaned:
+            continue
+        log(f"[ocr] p{page.page_number}: {len(cleaned)} línea(s) reconocidas en imagen "
+            f"(ratio área={area / page_area:.2f})")
+        blocks.append(Block(kind="text", top=bbox[1], lines=[
+            Line(text=c, size=0.0, bold=False, top=bbox[1], x0=bbox[0])
+            for c in cleaned
+        ]))
+    return blocks
 
 
 def assign_headings(pages: list[list[Block]], config: Config) -> None:
