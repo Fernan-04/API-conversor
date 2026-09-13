@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from conftest import VERBOS
 
+from doc2md.adapters.inbound import http as http_mod
 from doc2md.adapters.inbound.http import app
 
 client = TestClient(app)
@@ -24,6 +25,39 @@ def test_health():
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
+
+
+def test_convert_offloads_cpu_work_to_threadpool(monkeypatch):
+    """La conversión (síncrona, CPU-bound: parseo/OCR) debe delegarse a un
+    hilo aparte vía `run_in_threadpool`, NUNCA llamarse directo dentro de la
+    corrutina `async def convert_endpoint`.
+
+    Motivo (regresión real en producción): si se llama directo, bloquea el
+    ÚNICO hilo del event loop de uvicorn y congela TODA la API — incluido
+    `/health` — mientras dura la conversión. Eso disparó un fallo real del
+    health check de Render ("timed out after 5 seconds") con un PDF que
+    tardaba varios segundos.
+
+    Nota: `TestClient` no reproduce el bloqueo real de un solo worker de
+    uvicorn (sus llamadas concurrentes no comparten el mismo event loop de la
+    forma en que lo hace producción), así que este test verifica la
+    IMPLEMENTACIÓN (que se use `run_in_threadpool`) en vez de cronometrar. La
+    mejora real se verificó a mano con un servidor uvicorn de verdad: `/health`
+    respondió en ~70 ms mientras un `/convert` de varios segundos seguía en
+    curso, antes de esta ronda tardaba lo mismo que la conversión completa.
+    """
+    calls: list = []
+    original = http_mod.run_in_threadpool
+
+    async def spy(func, *args, **kwargs):
+        calls.append(func)
+        return await original(func, *args, **kwargs)
+
+    monkeypatch.setattr(http_mod, "run_in_threadpool", spy)
+    with open(VERBOS, "rb") as f:
+        r = client.post("/convert", files={"files": ("x.pdf", f, "application/pdf")})
+    assert r.status_code == 200
+    assert http_mod._convert_upload in calls
 
 
 def test_convert_single_returns_markdown():

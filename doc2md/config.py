@@ -69,6 +69,16 @@ class Config:
     # Tiempo máximo (segundos) por imagen antes de abandonar esa imagen (nunca
     # aborta toda la conversión).
     ocr_timeout: float = 20.0
+    # Presupuesto de tiempo TOTAL (segundos) para el OCR de imágenes de todo el
+    # documento (medido de verdad, no estimado). En el plan gratis de Render
+    # (CPU compartida y lenta) un documento con varias imágenes grandes puede
+    # acumular OCR suficiente para superar el timeout del proxy y devolver un
+    # 502 en vez de la conversión — se agotó comprobado en producción. Al
+    # agotarse el presupuesto, las imágenes restantes se tratan igual que "sin
+    # Tesseract disponible" (aviso visible si son grandes, sin ruido si no):
+    # nunca se pierde contenido en silencio, pero tampoco se deja que el OCR
+    # se coma la petición entera.
+    ocr_total_budget_seconds: float = 8.0
     # Algunos PDFs maquetados (ej. exportados con "negrita falsa") dibujan cada
     # glifo dos veces superpuesto en vez de usar una fuente bold real: el texto
     # sale duplicado letra a letra ("Hackatón Hackatón" o peor, "Aassppeeccttoo").

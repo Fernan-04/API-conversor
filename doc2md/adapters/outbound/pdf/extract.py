@@ -17,6 +17,7 @@ neutral `Document` del dominio.
 from __future__ import annotations
 
 import re
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from statistics import median
@@ -121,6 +122,41 @@ def _group_paragraphs(lines: list[Line]) -> list[Block]:
     return blocks
 
 
+@dataclass
+class _OcrBudget:
+    """Presupuesto de tiempo TOTAL de OCR compartido entre páginas de un mismo
+    documento (§Ronda 6). Mutable a propósito: cada imagen OCR-eada descuenta
+    su tiempo real; al llegar a 0, el resto del documento se trata como si no
+    hubiera Tesseract disponible (aviso en vez de gasto de tiempo)."""
+    remaining: float
+
+    def exhausted(self) -> bool:
+        return self.remaining <= 0
+
+
+def _has_duplicate_chars(page, tolerance: float) -> bool:
+    """Detector barato (O(n)) de si la página tiene glifos duplicados.
+
+    `page.dedupe_chars()` de pdfplumber es correcto pero caro: su paso final
+    reordena con `sorted(deduped, key=chars.index)`, y `list.index()` es O(n),
+    así que el conjunto sale O(n²) — en una página con cientos de caracteres
+    esto duplica (o más) el tiempo de conversión, incluso en páginas SIN
+    ningún glifo duplicado. Como la inmensa mayoría de páginas no tienen este
+    problema, se hace primero este chequeo O(n) con un `set` (agrupando por
+    posición redondeada a `tolerance`, una aproximación barata del clustering
+    real que hace pdfplumber) y solo se paga el costo de `dedupe_chars()` en
+    las páginas que de verdad lo necesitan.
+    """
+    seen: set[tuple[str, int, int]] = set()
+    tol = tolerance or 1.0
+    for c in page.chars:
+        key = (c["text"], round(c["x0"] / tol), round(c["top"] / tol))
+        if key in seen:
+            return True
+        seen.add(key)
+    return False
+
+
 def extract_document(
     source, config: Config
 ) -> tuple[list[list[Block]], int, int, list[str]]:
@@ -134,6 +170,7 @@ def extract_document(
     pages_out: list[list[Block]] = []
     log: list[str] = []
     pages_with_text = 0
+    ocr_budget = _OcrBudget(remaining=config.ocr_total_budget_seconds)
 
     with pdfplumber.open(source) as pdf:
         n_pages = len(pdf.pages)
@@ -144,7 +181,7 @@ def extract_document(
                 detail=f"pages={n_pages} > {config.pdf_max_pages}",
             )
         for page in pdf.pages:
-            if config.dedupe_chars:
+            if config.dedupe_chars and _has_duplicate_chars(page, config.dedupe_tolerance):
                 page = page.dedupe_chars(tolerance=config.dedupe_tolerance)
             accepted = []
             if config.extract_tables:
@@ -178,7 +215,7 @@ def extract_document(
                 # OCR de imágenes grandes sin texto real encima (§Ronda 6): una
                 # infografía o portada exportada como imagen no debe perderse
                 # solo porque el resto de la página SÍ tiene texto normal.
-                blocks.extend(_ocr_big_images(page, kept, config, log.append))
+                blocks.extend(_ocr_big_images(page, kept, config, log.append, ocr_budget))
                 blocks.sort(key=lambda b: b.top)
 
             if lines or accepted or blocks:
@@ -211,16 +248,21 @@ def _image_bbox(im: dict) -> Bbox:
     return (im["x0"], im["top"], im["x1"], im["bottom"])
 
 
-def _ocr_big_images(page, kept_words: list[dict], config: Config, log) -> list[Block]:
+def _ocr_big_images(
+    page, kept_words: list[dict], config: Config, log,
+    budget: "_OcrBudget | None" = None,
+) -> list[Block]:
     """OCR de imágenes grandes sin texto real encima (§Ronda 6).
 
     Muchas portadas/infografías se exportan como una imagen a página completa
     (o casi) sin ninguna capa de texto sobre ella: sin esto, esa página se
     pierde por completo. Se ignoran imágenes pequeñas (`ocr_image_min_area_ratio`)
     y las que ya tienen texto real superpuesto (evita duplicar un título vector
-    dibujado encima de un fondo decorativo). Si Tesseract no está disponible, se
-    inserta un aviso VISIBLE en el propio Markdown en vez de perder el contenido
-    en silencio.
+    dibujado encima de un fondo decorativo). Si Tesseract no está disponible —o
+    si `budget` (compartido entre páginas) ya se agotó, ver `Config.
+    ocr_total_budget_seconds`— se inserta un aviso VISIBLE en el propio
+    Markdown en vez de perder el contenido en silencio o dejar que el OCR se
+    coma la petición entera (medido en producción: causaba 502 en Render).
     """
     if not config.ocr_images or not getattr(page, "images", None):
         return []
@@ -242,28 +284,36 @@ def _ocr_big_images(page, kept_words: list[dict], config: Config, log) -> list[B
         )
         if overlapping_real_text > 5:
             continue   # ya hay texto real sobre esta imagen: no duplicar
-        if not ocr_mod.available():
+        budget_exhausted = budget is not None and budget.exhausted()
+        if not ocr_mod.available() or budget_exhausted:
             if area / page_area < config.ocr_placeholder_min_area_ratio:
                 continue   # sin OCR no se sabe si es foto decorativa o texto: sin ruido
             done += 1
+            reason = (
+                "presupuesto de tiempo de OCR agotado" if budget_exhausted
+                else "instala Tesseract para activar el OCR"
+            )
             # Texto plano (sin sintaxis Markdown): el renderer escapa los
             # párrafos normales y un "*" literal saldría como "\*" (negrita
             # rota), no en cursiva.
             blocks.append(Block(kind="text", top=bbox[1], lines=[Line(
                 text=f"[Imagen en la página {page.page_number}: su contenido "
-                     f"no se pudo extraer — instala Tesseract para activar "
-                     f"el OCR]",
+                     f"no se pudo extraer — {reason}]",
                 size=0.0, bold=False, top=bbox[1], x0=bbox[0],
             )]))
-            log(f"[ocr] p{page.page_number}: imagen grande sin OCR disponible "
-                f"(aviso insertado, ratio área={area / page_area:.2f})")
+            log(f"[ocr] p{page.page_number}: imagen grande sin OCR ({reason}, "
+                f"aviso insertado, ratio área={area / page_area:.2f})")
             continue
         done += 1
+        started = time.perf_counter()
         try:
             texts = ocr_mod.ocr_image_region(page, bbox, config)
         except Exception as exc:  # noqa: BLE001 — el OCR nunca debe romper el lote
             log(f"[ocr] p{page.page_number}: OCR de imagen falló: {exc}")
             continue
+        finally:
+            if budget is not None:
+                budget.remaining -= time.perf_counter() - started
         cleaned = [
             c for t in texts
             if (c := normalize_unicode(strip_pua(t, config)).strip())

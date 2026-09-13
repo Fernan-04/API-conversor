@@ -27,6 +27,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, File, Header, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from doc2md import __version__, api
 from doc2md.adapters.inbound import rate_limit
@@ -244,7 +245,15 @@ async def convert_endpoint(
         upload = files[0]
         try:
             data = await upload.read()
-            markdown = _convert_upload(data, upload.filename or "archivo", config)
+            # `_convert_upload` es síncrono y hace trabajo de CPU (parseo,
+            # OCR): correrlo directo en una función `async def` bloquearía el
+            # ÚNICO hilo del event loop de uvicorn, congelando TODA la API
+            # (incluido `/health`) mientras dura la conversión — así se
+            # disparó un fallo real del health check de Render con un PDF
+            # lento. `run_in_threadpool` lo delega a un hilo aparte.
+            markdown = await run_in_threadpool(
+                _convert_upload, data, upload.filename or "archivo", config
+            )
         except ConversionError as exc:
             return _error_response(exc)
         finally:
@@ -273,8 +282,8 @@ async def convert_endpoint(
                             "El tamaño total de los archivos supera el límite de "
                             f"{config.max_total_bytes // (1024 * 1024)} MB."
                         )
-                    markdown = _convert_upload(
-                        data, upload.filename or "archivo", config
+                    markdown = await run_in_threadpool(
+                        _convert_upload, data, upload.filename or "archivo", config
                     )
                 except ConversionError as exc:
                     return _error_response(exc)

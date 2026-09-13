@@ -18,7 +18,7 @@ import pytest
 pytest.importorskip("pytesseract")
 
 from doc2md.adapters.outbound.pdf import ocr as ocr_mod
-from doc2md.adapters.outbound.pdf.extract import Block, _ocr_big_images
+from doc2md.adapters.outbound.pdf.extract import Block, _OcrBudget, _ocr_big_images
 from doc2md.config import Config
 
 requires_tesseract = pytest.mark.skipif(
@@ -177,7 +177,7 @@ def test_big_image_inserts_visible_placeholder_when_ocr_unavailable():
     assert len(blocks) == 1
     text = blocks[0].lines[0].text
     assert "página 1" in text and "Tesseract" in text
-    assert any("sin OCR disponible" in line for line in monkeypatch_log)
+    assert any("sin OCR" in line for line in monkeypatch_log)
 
 
 def test_big_image_no_placeholder_noise_for_decorative_photo_below_threshold():
@@ -221,6 +221,46 @@ def test_ocr_max_images_caps_processing(monkeypatch):
     cfg = Config(ocr_max_images=2)
     blocks = _ocr_big_images(page, kept_words=[], config=cfg, log=lambda s: None)
     assert len(blocks) == 2
+
+
+def test_ocr_budget_exhausted_stops_spending_more_time(monkeypatch):
+    """Agotado el presupuesto de tiempo (medido, no estimado), las imágenes
+    restantes se tratan como "sin OCR": aviso si dominan la página, sin ruido
+    si no — pero NUNCA se sigue llamando a Tesseract (lo que causó 502 en
+    Render con un PDF real de varias imágenes grandes)."""
+    monkeypatch.setattr(ocr_mod, "available", lambda: True)
+    calls: list[str] = []
+
+    def fake_ocr(page, bbox, config):
+        calls.append("called")
+        return ["texto reconocido"]
+
+    monkeypatch.setattr(ocr_mod, "ocr_image_region", fake_ocr)
+    # Dos imágenes que dominan la página (>=50%, para que SÍ avise al agotarse
+    # el presupuesto), una arriba y otra abajo.
+    page = _Page(images=[_Img(0, 0, 800, 500), _Img(0, 500, 800, 1000)])
+    budget = _OcrBudget(remaining=0.0)  # ya agotado desde el inicio
+    blocks = _ocr_big_images(
+        page, kept_words=[], config=Config(), log=lambda s: None, budget=budget
+    )
+    assert calls == []  # nunca se llamó a Tesseract: se respetó el presupuesto
+    assert len(blocks) == 2
+    assert all("presupuesto de tiempo de OCR agotado" in b.lines[0].text for b in blocks)
+
+
+def test_ocr_budget_decrements_by_real_elapsed_time(monkeypatch):
+    monkeypatch.setattr(ocr_mod, "available", lambda: True)
+
+    def slow_ocr(page, bbox, config):
+        import time
+        time.sleep(0.05)
+        return ["x"]
+
+    monkeypatch.setattr(ocr_mod, "ocr_image_region", slow_ocr)
+    page = _Page(images=[_Img(0, 0, 800, 1000)])
+    budget = _OcrBudget(remaining=1.0)
+    _ocr_big_images(page, kept_words=[], config=Config(), log=lambda s: None, budget=budget)
+    assert budget.remaining < 1.0  # se descontó el tiempo real gastado
 
 
 # --------------------------------------------------------------------------- #
