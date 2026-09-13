@@ -1,31 +1,51 @@
 # doc2md
 
-Conversor local multi-formato a Markdown: **PDF, Word (.docx), PowerPoint
-(.pptx) y Excel (.xlsx)**. Nació como `pdf2md` (rúbricas y consignas de
+Motor de conversión detrás de **[Markdocs](https://conversor-documentos-one.vercel.app)**:
+convierte **PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), texto plano,
+CSV/TSV y HTML** a Markdown. Nació como `pdf2md` (rúbricas y consignas de
 UTP+class) y se escaló a un motor con arquitectura hexagonal + una API HTTP.
 
 > Documentación de uso personal (no para publicar). Ver `docs/`.
 
 ## Qué hace
 
-- Convierte PDF/DOCX/PPTX/XLSX a Markdown detectando el formato por la extensión.
-- **PDF**: extrae texto con orden razonable; detecta títulos por tamaño de fuente
-  y negritas; extrae **tablas reales** y **descarta las tablas de maquetación** de
-  páginas HTML impresas (§5); elimina cabeceras/pies repetidos; une párrafos con
-  des-hifenización; filtra glifos de iconos (PUA) y normaliza Unicode.
-- **DOCX**: títulos por estilo (`Heading N`), listas, negritas y tablas.
+- Convierte PDF/DOCX/PPTX/XLSX/TXT/MD/CSV/TSV/HTML a Markdown detectando el
+  formato por la extensión.
+- **PDF**: extrae texto con orden razonable; detecta títulos por tamaño de
+  fuente y negritas (con clustering, fusión de títulos partidos en varias
+  líneas y quitando "negrita falsa" de glifos duplicados); extrae **tablas
+  reales** y **descarta las tablas de maquetación** de páginas HTML impresas
+  (§5); elimina cabeceras/pies repetidos y etiquetas decorativas de portada;
+  une párrafos con des-hifenización; filtra glifos de iconos (PUA) y
+  normaliza Unicode; corrige espaciado de puntuación. **OCR automático**
+  (Tesseract) para imágenes grandes sin capa de texto (portadas/infografías
+  exportadas como imagen) — si Tesseract no está disponible, avisa en vez de
+  perder la página en silencio.
+- **DOCX**: títulos por estilo (`Heading N`), listas numeradas/anidadas,
+  negrita/cursiva/enlaces inline y tablas.
 - **PPTX**: título de cada diapositiva como encabezado, viñetas, tablas y notas
   del orador como bloque aparte.
 - **XLSX**: una sección por hoja (encabezado con el nombre) + tabla de sus filas
-  (con tope configurable para hojas enormes).
+  (con tope configurable para hojas enormes; limpieza de ruido de maquetación
+  tipo Gantt).
 - **TXT/MD/CSV/TSV** (solo stdlib): `.txt` → párrafos; `.md` → passthrough
   verbatim; `.csv`/`.tsv` → tabla.
+- **HTML** (solo stdlib, sin dependencias): el texto que un navegador adjunta
+  al portapapeles al copiar de una web/Google Docs/Notion/Word — conserva
+  títulos, negrita/cursiva/enlaces, listas anidadas, tablas y código. Es lo
+  que usa el cuadro "Pegar texto" de Markdocs.
+- **Español e inglés**: el idioma del documento se detecta solo y ajusta
+  Title Case, la tabla clave-valor y el autolink de URLs.
 - CLI por lotes (una carpeta completa, opcionalmente recursiva) que no aborta si
   un archivo falla, y una **API HTTP** (FastAPI) para el frontend web.
 - **Endurecimiento de seguridad** (ver `docs/MEMORY.md`): guarda anti zip-bomb en
   OOXML, validación de firma por magic bytes, límites por petición (nº de archivos,
   total, páginas PDF), API key opcional, **rate limiting** (por IP + global, en
   memoria) y saneo de `Content-Disposition`.
+- **Pensado para plan gratis**: la conversión corre en un threadpool (no
+  bloquea el health check ni el resto de la API mientras procesa un archivo
+  pesado) y las heurísticas caras (deduplicado de glifos, OCR) solo se activan
+  cuando de verdad hacen falta, con un tope de tiempo total.
 
 ## Arquitectura (hexagonal)
 
@@ -34,7 +54,7 @@ doc2md/
 ├── domain/        # PURO: models, ports, errors, markdown_renderer (sin libs de I/O)
 ├── adapters/
 │   ├── inbound/   # cli.py (CLI) + http.py (FastAPI)
-│   └── outbound/  # router + un lector por formato (pdf/, docx, pptx, xlsx)
+│   └── outbound/  # router + un lector por formato (pdf/, docx, pptx, xlsx, html_reader.py...)
 ├── api.py         # convert(source, config) -> str   (fachada única)
 ├── config.py      # todos los umbrales
 ├── text_utils.py  # normalización Unicode compartida
@@ -62,8 +82,11 @@ python -m venv .venv
 pip install -e ".[api,dev]"     # motor + API + tests
 ```
 
-OCR (opcional, solo PDF con `--ocr`): `pip install -e ".[ocr]"` + binario
-`tesseract` (Windows: https://github.com/UB-Mannheim/tesseract/wiki).
+OCR (opcional): `pip install -e ".[ocr]"` + binario `tesseract` (Windows:
+https://github.com/UB-Mannheim/tesseract/wiki; el `Dockerfile` ya lo instala
+para el despliegue). Con Tesseract disponible, el OCR de imágenes grandes sin
+texto se activa **solo** (sin flags); `--ocr` fuerza además el OCR de página
+completa en PDFs escaneados sin ninguna capa de texto.
 
 ## Uso del CLI
 
@@ -175,9 +198,13 @@ del filtro de tablas usan `rubrica1.pdf` y `APF1_INDICACION.pdf` (los dos casos
 opuestos del SPEC) y se saltan si esos PDFs no están en `pdfs/`. Las fixtures de
 DOCX/PPTX/XLSX se generan al vuelo (`tests/conftest.py`).
 
-## Estado del escalamiento
+## Estado
 
-Ver `docs/PLAN_escalamiento_doc2md.md` (plan completo) y `docs/MEMORY.md` (estado
-y siguientes pasos). Hecho: **Fase 1** (motor multi-formato hexagonal) y **Fase 2**
-(API + Dockerfile). Pendiente: Fase 3/5 (deploy en Railway/Render y Vercel) y
-Fase 4 (frontend Next.js).
+Desplegado y en producción en Render:
+https://api-conversor-gvzr.onrender.com (`/health` para comprobar). Lo consume
+el frontend **Markdocs**: https://conversor-documentos-one.vercel.app.
+
+Ver `docs/MEMORY.md` (estado detallado, decisiones e historial de rondas) y
+`docs/PLAN_escalamiento_doc2md.md` (plan original). El documento vigente que
+cubre ambos repos vive en `../docs/` (`MEMORY.md`, `ARQUITECTURA.md`,
+`CONTRACT.md`), un nivel arriba de este.
