@@ -77,8 +77,10 @@ class Config:
     # agotarse el presupuesto, las imágenes restantes se tratan igual que "sin
     # Tesseract disponible" (aviso visible si son grandes, sin ruido si no):
     # nunca se pierde contenido en silencio, pero tampoco se deja que el OCR
-    # se coma la petición entera.
-    ocr_total_budget_seconds: float = 8.0
+    # se coma la petición entera. 4s (antes 8s, medido en producción: bajarlo
+    # a la mitad recorta el peor caso sin renunciar a recuperar la primera
+    # imagen grande del documento, la que suele importar más).
+    ocr_total_budget_seconds: float = 4.0
     # Algunos PDFs maquetados (ej. exportados con "negrita falsa") dibujan cada
     # glifo dos veces superpuesto en vez de usar una fuente bold real: el texto
     # sale duplicado letra a letra ("Hackatón Hackatón" o peor, "Aassppeeccttoo").
