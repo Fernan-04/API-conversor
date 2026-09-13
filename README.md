@@ -1,6 +1,6 @@
 # doc2md
 
-Motor de conversión detrás de **[Markdocs](https://conversor-documentos-one.vercel.app)**:
+Motor de conversión detrás de **Markdocs** (una web propia hecha con Next.js):
 convierte **PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), texto plano,
 CSV/TSV y HTML** a Markdown. Nació como `pdf2md` (rúbricas y consignas de
 UTP+class) y se escaló a un motor con arquitectura hexagonal + una API HTTP.
@@ -200,11 +200,13 @@ DOCX/PPTX/XLSX se generan al vuelo (`tests/conftest.py`).
 
 ## Estado
 
-Desplegado y en producción en Render:
-https://api-conversor-gvzr.onrender.com (`/health` para comprobar). Lo consume
-el frontend **Markdocs**: https://conversor-documentos-one.vercel.app.
+Pensado para desplegarse en un plan gratuito (Render para la API + Vercel para
+la web). Una vez desplegado, la URL de la API se ve así (ejemplo, no es una
+URL real):
+
+```
+https://tu-api-conversor.onrender.com/health   →  {"status": "ok", "version": "0.3.0"}
+```
 
 Ver `docs/MEMORY.md` (estado detallado, decisiones e historial de rondas) y
-`docs/PLAN_escalamiento_doc2md.md` (plan original). El documento vigente que
-cubre ambos repos vive en `../docs/` (`MEMORY.md`, `ARQUITECTURA.md`,
-`CONTRACT.md`), un nivel arriba de este.
+`docs/PLAN_escalamiento_doc2md.md` (plan original).
